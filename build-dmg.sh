@@ -1,33 +1,48 @@
 #!/bin/bash
-set -e
+set -euo pipefail
+cd "$(dirname "$0")"
 
 APP_NAME="Tappy"
-APP_PATH="build/${APP_NAME}.app"
-DMG_NAME="${APP_NAME}-1.0.dmg"
-DMG_PATH="build/${DMG_NAME}"
-TMP_DIR="$(mktemp -d)"
+APP_VERSION="1.1"
+APP_PATH="$PWD/build/$APP_NAME.app"
+DMG_PATH="$PWD/build/$APP_NAME-$APP_VERSION.dmg"
+if [[ "${1:-}" != "--skip-build" ]]; then ./build-app.sh; fi
+[[ -d "$APP_PATH" ]] || { echo "Missing app bundle: $APP_PATH" >&2; exit 1; }
+[[ "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$APP_PATH/Contents/Info.plist")" == "$APP_VERSION" ]] || { echo "App version does not match DMG version" >&2; exit 1; }
+STAGING_DIR="$(mktemp -d)"
+trap 'rm -rf "$STAGING_DIR"' EXIT
+cp -R "$APP_PATH" "$STAGING_DIR/"
+ln -s /Applications "$STAGING_DIR/Applications"
+cat > "$STAGING_DIR/Start here.txt" <<'README'
+TAPPY 1.1 — THE MAGIC UPDATE
 
-if [ ! -d "$APP_PATH" ]; then
-    echo "Building $APP_NAME.app first..."
-    ./build-app.sh
-fi
+Drag Tappy into Applications, then open it.
+Choose your character and try clicking the preview.
+Enable Tappy with the switch or Control + Option + P.
 
-echo "Creating DMG..."
-mkdir -p "$TMP_DIR/.background"
+Four characters, four sounds:
+• Classic cartoon glove — Cartoon knock
+• Sailor Moon inspired wand — Moon chime
+• Princess Star inspired wand — Star sparkle
+• Wizard's magic wand — Magic swish
 
-# Copy app
-cp -R "$APP_PATH" "$TMP_DIR/"
+Click faster for a bigger cartoon reaction and a louder sound.
+Adjust personality, pointer size, shadow and master volume in Settings.
 
-# Create Applications symlink
-ln -s /Applications "$TMP_DIR/Applications"
+Control + Option + P — enable / disable Tappy
+Control + Option + T — enable / exit Presentation Mode
 
-# Create the DMG
-hdiutil create -srcfolder "$TMP_DIR" -volname "$APP_NAME" -fs HFS+ -format UDZO -size 20m "$DMG_PATH"
+Presentation Mode needs Accessibility access. It blocks mouse clicks
+and scrolling; your keyboard stays live. Use the shortcut to exit.
+Normal pointer mode and shortcuts do not require Accessibility.
 
-# Clean up
-rm -rf "$TMP_DIR"
+For calls and recordings, share the entire screen to include Tappy.
+To share the effects, also enable system audio in your calling app.
 
-# Ad-hoc sign
+Requires macOS 13 or later. Universal: Apple Silicon + Intel.
+README
+hdiutil create -ov -srcfolder "$STAGING_DIR" -volname "$APP_NAME $APP_VERSION" -fs HFS+ -format UDZO "$DMG_PATH"
 codesign --force --sign - "$DMG_PATH"
-
+hdiutil verify "$DMG_PATH"
+shasum -a 256 "$DMG_PATH" > "$DMG_PATH.sha256"
 echo "Built $DMG_PATH"

@@ -1,61 +1,30 @@
 import Cocoa
-import CoreGraphics
+import Carbon
 
-class HotKeyManager {
-    private var eventTap: CFMachPort?
-    private var runLoopSource: CFRunLoopSource?
+/// Carbon hotkeys keep the emergency shortcuts available without Accessibility access.
+final class HotKeyManager {
+    private var handler: EventHandlerRef?
+    private var keys: [EventHotKeyRef] = []
+    private let toggle: () -> Void
+    private let presentation: () -> Void
 
-    private static var action: (() -> Void)?
-
-    init(action: @escaping () -> Void) {
-        HotKeyManager.action = action
-
-        let eventMask = (1 << CGEventType.keyDown.rawValue)
-        guard let tap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
-            place: .headInsertEventTap,
-            options: .defaultTap,
-            eventsOfInterest: CGEventMask(eventMask),
-            callback: { proxy, type, event, refcon in
-                HotKeyManager.handleEvent(proxy: proxy, type: type, event: event)
-            },
-            userInfo: nil
-        ) else { return }
-
-        eventTap = tap
-        runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
-        if let source = runLoopSource {
-            CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
-        }
-        CGEvent.tapEnable(tap: tap, enable: true)
-    }
-
-    deinit {
-        if let tap = eventTap {
-            CGEvent.tapEnable(tap: tap, enable: false)
-        }
-        if let source = runLoopSource {
-            CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
+    init(toggle: @escaping () -> Void, presentation: @escaping () -> Void) {
+        self.toggle = toggle; self.presentation = presentation
+        var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+        InstallEventHandler(GetApplicationEventTarget(), { _, event, context in
+            guard let event, let context else { return OSStatus(eventNotHandledErr) }
+            let manager = Unmanaged<HotKeyManager>.fromOpaque(context).takeUnretainedValue()
+            var id = EventHotKeyID()
+            GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil,
+                              MemoryLayout<EventHotKeyID>.size, nil, &id)
+            if id.id == 1 { manager.toggle() } else if id.id == 2 { manager.presentation() }
+            return noErr
+        }, 1, &eventType, Unmanaged.passUnretained(self).toOpaque(), &handler)
+        for (id, code) in [(UInt32(1), UInt32(kVK_ANSI_P)), (UInt32(2), UInt32(kVK_ANSI_T))] {
+            var key: EventHotKeyRef?
+            if RegisterEventHotKey(code, UInt32(controlKey | optionKey), EventHotKeyID(signature: 0x54505059, id: id),
+                                   GetApplicationEventTarget(), 0, &key) == noErr, let key { keys.append(key) }
         }
     }
-
-    private static func handleEvent(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
-        guard type == .keyDown else { return Unmanaged.passUnretained(event) }
-
-        let flags = event.flags
-        let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-
-        let control = flags.contains(.maskControl)
-        let option = flags.contains(.maskAlternate)
-        let pKey: Int64 = 35 // Virtual keycode for "P" on ANSI keyboards
-
-        if control && option && keyCode == pKey {
-            DispatchQueue.main.async {
-                action?()
-            }
-            return nil // Suppress the original event
-        }
-
-        return Unmanaged.passUnretained(event)
-    }
+    deinit { keys.forEach { UnregisterEventHotKey($0) }; if let handler { RemoveEventHandler(handler) } }
 }

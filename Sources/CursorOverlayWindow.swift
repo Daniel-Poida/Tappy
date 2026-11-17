@@ -1,153 +1,130 @@
 import Cocoa
 import SwiftUI
-import CoreGraphics
 import ApplicationServices
 
-class CursorOverlayWindow: NSWindow {
-    private let cursorState = CursorState()
+final class CursorOverlayWindow: NSWindow, ObservableObject {
+    let cursorState = CursorState()
+    @Published private(set) var isActive = false
+    @Published private(set) var presentationMode = false
     private var trackingTimer: Timer?
     private var clickMonitor: Any?
+    private var localMonitor: Any?
+    private var eventTap: CFMachPort?
+    private var tapSource: CFRunLoopSource?
+    private var cursorHidden = false
+    var onChange: (() -> Void)?
 
-    private static weak var sharedInstance: CursorOverlayWindow?
-
-    var isActive: Bool = false
-    var presentationMode: Bool = false {
-        didSet {
-            ignoresMouseEvents = !presentationMode
-        }
-    }
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
 
     init() {
         let frame = NSScreen.main?.frame ?? NSRect(x: 0, y: 0, width: 1920, height: 1080)
-        super.init(contentRect: frame,
-                   styleMask: [.borderless],
-                   backing: .buffered,
-                   defer: false)
-
-        CursorOverlayWindow.sharedInstance = self
-
+        super.init(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
         level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.cursorWindow)))
-        backgroundColor = .clear
-        isOpaque = false
-        hasShadow = false
+        backgroundColor = .clear; isOpaque = false; hasShadow = false
         ignoresMouseEvents = true
-        collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
-
-        let hostingView = NSHostingView(rootView: CursorView(state: cursorState))
-        hostingView.frame = frame
-        hostingView.autoresizingMask = [.width, .height]
-        contentView = hostingView
+        collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
+        isReleasedWhenClosed = false
+        let view = NSHostingView(rootView: CursorView(state: cursorState))
+        view.frame = NSRect(origin: .zero, size: frame.size)
+        view.autoresizingMask = [.width, .height]
+        contentView = view
+        NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(suspend), name: NSWorkspace.sessionDidResignActiveNotification, object: nil)
+        NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(suspend), name: NSWorkspace.willSleepNotification, object: nil)
     }
 
-    func toggle() {
-        isActive.toggle()
-        if isActive {
-            updateFrameForCursor()
-            makeKeyAndOrderFront(nil)
-            orderFrontRegardless()
-            startTracking()
-            hideSystemCursor()
-        } else {
-            orderOut(nil)
-            stopTracking()
-            showSystemCursor()
-        }
+    func toggle() { isActive ? deactivate() : activate() }
+    func activate() {
+        guard !isActive else { return }
+        isActive = true
+        updateCursorPosition()
+        orderFrontRegardless()
+        startTracking()
+        if !cursorHidden { CGDisplayHideCursor(CGMainDisplayID()); cursorHidden = true }
+        onChange?()
     }
-
     func deactivate() {
+        setPresentation(false)
         isActive = false
         orderOut(nil)
-        stopTracking()
-        showSystemCursor()
+        trackingTimer?.invalidate(); trackingTimer = nil
+        if let clickMonitor { NSEvent.removeMonitor(clickMonitor) }; clickMonitor = nil
+        if let localMonitor { NSEvent.removeMonitor(localMonitor) }; localMonitor = nil
+        if cursorHidden { CGDisplayShowCursor(CGMainDisplayID()); cursorHidden = false }
+        cursorState.reset()
+        onChange?()
     }
+    @objc private func suspend() { deactivate() }
 
-    private func updateFrameForCursor() {
-        let mouseLocation = NSEvent.mouseLocation
-        let screen = NSScreen.screens.first { NSMouseInRect(mouseLocation, $0.frame, false) } ?? NSScreen.main
-        if let frame = screen?.frame {
-            setFrame(frame, display: true)
+    @discardableResult
+    func setPresentation(_ enabled: Bool) -> Bool {
+        if !enabled {
+            presentationMode = false
+            if let eventTap { CGEvent.tapEnable(tap: eventTap, enable: false) }
+            if let tapSource { CFRunLoopRemoveSource(CFRunLoopGetMain(), tapSource, .commonModes) }
+            if let eventTap { CFMachPortInvalidate(eventTap) }
+            eventTap = nil; tapSource = nil
+            onChange?()
+            return true
         }
+        guard !presentationMode else { return true }
+        guard Self.accessibilityEnabled() else { return false }
+        let types: [CGEventType] = [.leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp,
+                                   .otherMouseDown, .otherMouseUp, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged, .scrollWheel]
+        let mask = types.reduce(CGEventMask(0)) { $0 | (1 << $1.rawValue) }
+        guard let tap = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap, options: .defaultTap,
+            eventsOfInterest: mask, callback: { _, type, event, context in
+                guard let context else { return Unmanaged.passUnretained(event) }
+                let overlay = Unmanaged<CursorOverlayWindow>.fromOpaque(context).takeUnretainedValue()
+                if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+                    // Fail open: a disabled tap must never leave the UI claiming clicks are protected.
+                    DispatchQueue.main.async { overlay.setPresentation(false) }
+                    return Unmanaged.passUnretained(event)
+                }
+                guard overlay.presentationMode else { return Unmanaged.passUnretained(event) }
+                if type == .leftMouseDown || type == .rightMouseDown || type == .otherMouseDown { overlay.tap() }
+                return nil
+            }, userInfo: Unmanaged.passUnretained(self).toOpaque()) else { return false }
+        eventTap = tap
+        tapSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+        if let tapSource { CFRunLoopAddSource(CFRunLoopGetMain(), tapSource, .commonModes) }
+        presentationMode = true
+        activate()
+        CGEvent.tapEnable(tap: tap, enable: true)
+        onChange?()
+        return true
     }
 
-    private func hideSystemCursor() {
-        CGDisplayHideCursor(CGMainDisplayID())
+    private func tap() {
+        updateCursorPosition()
+        let energy = cursorState.tap(settings: .shared)
+        SoundManager.shared.playKnock(energy: energy)
     }
-
-    private func showSystemCursor() {
-        CGDisplayShowCursor(CGMainDisplayID())
-    }
-
     private func startTracking() {
-        // Timer-based cursor tracking: works without Accessibility
-        trackingTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
-            self?.updateCursorPosition()
+        let timer = Timer(timeInterval: 1.0 / 90, repeats: true) { [weak self] _ in
+            self?.updateCursorPosition(); self?.cursorState.tick()
         }
-        trackingTimer?.tolerance = 1.0 / 120.0
-
-        // Global click monitor: requires Accessibility, but won't show a dialog if denied
-        if CursorOverlayWindow.accessibilityEnabled() {
-            clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-                self?.cursorState.tap(settings: TappySettings.shared)
-                SoundManager.shared.playKnock()
-            }
+        timer.tolerance = 0.002
+        RunLoop.main.add(timer, forMode: .common)
+        trackingTimer = timer
+        // Mouse-only monitors work without requesting keyboard monitoring permissions.
+        clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] _ in
+            guard self?.presentationMode == false else { return }; self?.tap()
         }
-    }
-
-    private func stopTracking() {
-        trackingTimer?.invalidate()
-        trackingTimer = nil
-
-        if let monitor = clickMonitor {
-            NSEvent.removeMonitor(monitor)
-            clickMonitor = nil
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] event in
+            guard self?.presentationMode == false else { return event }; self?.tap(); return event
         }
     }
-
     private func updateCursorPosition() {
-        let mouseLocation = NSEvent.mouseLocation
-
-        if let screen = NSScreen.screens.first(where: { NSMouseInRect(mouseLocation, $0.frame, false) }) {
-            if self.frame != screen.frame {
-                setFrame(screen.frame, display: false)
-            }
-            let converted = convertToWindowCoordinates(mouseLocation, screen: screen)
-            cursorState.move(to: converted)
-        } else if let screen = NSScreen.main {
-            let converted = convertToWindowCoordinates(mouseLocation, screen: screen)
-            cursorState.move(to: converted)
-        }
+        let point = NSEvent.mouseLocation
+        guard let screen = NSScreen.screens.first(where: { NSMouseInRect(point, $0.frame, false) }) ?? NSScreen.main else { return }
+        if frame != screen.frame { setFrame(screen.frame, display: false) }
+        cursorState.move(to: Self.localPosition(point, frame: screen.frame))
     }
-
-
-    private func convertToWindowCoordinates(_ point: NSPoint, screen: NSScreen) -> CGPoint {
-        let windowY = screen.frame.height - (point.y - screen.frame.origin.y)
-        let windowX = point.x - screen.frame.origin.x
-        return CGPoint(x: windowX, y: windowY)
+    static func localPosition(_ point: NSPoint, frame: NSRect) -> CGPoint {
+        CGPoint(x: point.x - frame.minX, y: frame.maxY - point.y)
     }
-
-    // MARK: - Presentation Mode
-
-    override func mouseDown(with event: NSEvent) {
-        if presentationMode {
-            cursorState.tap(settings: TappySettings.shared)
-            SoundManager.shared.playKnock()
-        }
-    }
-
-    override func rightMouseDown(with event: NSEvent) {
-        if presentationMode {
-            cursorState.tap(settings: TappySettings.shared)
-            SoundManager.shared.playKnock()
-        }
-    }
-
-    // MARK: - Accessibility
-
-    static func accessibilityEnabled() -> Bool {
-        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: false]
-        return AXIsProcessTrustedWithOptions(options as CFDictionary)
-    }
-
+    static func accessibilityEnabled() -> Bool { AXIsProcessTrusted() }
     static func requestAccessibility() {
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
         AXIsProcessTrustedWithOptions(options as CFDictionary)
