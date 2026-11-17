@@ -4,7 +4,7 @@ import CoreGraphics
 import ApplicationServices
 
 class CursorOverlayWindow: NSWindow {
-    private var cursorView = CursorView()
+    private let cursorState = CursorState()
     private var trackingTimer: Timer?
     private var clickMonitor: Any?
 
@@ -33,7 +33,7 @@ class CursorOverlayWindow: NSWindow {
         ignoresMouseEvents = true
         collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
 
-        let hostingView = NSHostingView(rootView: cursorView)
+        let hostingView = NSHostingView(rootView: CursorView(state: cursorState))
         hostingView.frame = frame
         hostingView.autoresizingMask = [.width, .height]
         contentView = hostingView
@@ -87,7 +87,7 @@ class CursorOverlayWindow: NSWindow {
         // Global click monitor: requires Accessibility, but won't show a dialog if denied
         if CursorOverlayWindow.accessibilityEnabled() {
             clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-                self?.cursorView.tap()
+                self?.cursorState.tap(settings: TappySettings.shared)
                 SoundManager.shared.playKnock()
             }
         }
@@ -111,12 +111,13 @@ class CursorOverlayWindow: NSWindow {
                 setFrame(screen.frame, display: false)
             }
             let converted = convertToWindowCoordinates(mouseLocation, screen: screen)
-            cursorView.move(to: converted)
+            cursorState.move(to: converted)
         } else if let screen = NSScreen.main {
             let converted = convertToWindowCoordinates(mouseLocation, screen: screen)
-            cursorView.move(to: converted)
+            cursorState.move(to: converted)
         }
     }
+
 
     private func convertToWindowCoordinates(_ point: NSPoint, screen: NSScreen) -> CGPoint {
         let windowY = screen.frame.height - (point.y - screen.frame.origin.y)
@@ -128,14 +129,14 @@ class CursorOverlayWindow: NSWindow {
 
     override func mouseDown(with event: NSEvent) {
         if presentationMode {
-            cursorView.tap()
+            cursorState.tap(settings: TappySettings.shared)
             SoundManager.shared.playKnock()
         }
     }
 
     override func rightMouseDown(with event: NSEvent) {
         if presentationMode {
-            cursorView.tap()
+            cursorState.tap(settings: TappySettings.shared)
             SoundManager.shared.playKnock()
         }
     }

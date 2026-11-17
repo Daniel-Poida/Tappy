@@ -2,27 +2,22 @@ import SwiftUI
 
 struct CursorView: View {
     @StateObject private var settings = TappySettings.shared
-    @State private var position: CGPoint = .zero
-    @State private var isTapping: Bool = false
-    @State private var burstTrigger: Int = 0
-    @State private var energy: Double = 0.0
-
-    private let clickHistory = ClickHistory()
+    @ObservedObject var state: CursorState
 
     var body: some View {
         ZStack {
             handView
                 .scaleEffect(handScale, anchor: .top)
                 .rotationEffect(handRotation)
-                .position(position)
-                .animation(.easeOut(duration: 0.08), value: isTapping)
+                .position(state.position)
+                .animation(.easeOut(duration: 0.08), value: state.isTapping)
 
-            BurstView(intensity: burstIntensity + energy)
-                .position(position)
-                .opacity(isTapping ? 1 : 0)
-                .scaleEffect(isTapping ? 1.0 : 0.1, anchor: .center)
-                .animation(.easeOut(duration: 0.15), value: isTapping)
-                .id(burstTrigger)
+            BurstView(intensity: burstIntensity + state.energy)
+                .position(state.position)
+                .opacity(state.isTapping ? 1 : 0)
+                .scaleEffect(state.isTapping ? 1.0 : 0.1, anchor: .center)
+                .animation(.easeOut(duration: 0.15), value: state.isTapping)
+                .id(state.burstTrigger)
         }
         .ignoresSafeArea()
     }
@@ -38,61 +33,17 @@ struct CursorView: View {
     }
 
     private var handScale: CGFloat {
-        let base = isTapping ? 0.85 : 1.0
-        let punch = isTapping ? CGFloat(energy * 0.4) : 0
+        let base = state.isTapping ? 0.85 : 1.0
+        let punch = state.isTapping ? CGFloat(state.energy * 0.4) : 0
         return base - punch
     }
 
     private var handRotation: Angle {
-        .degrees(-15 + (isTapping ? energy * 10 : 0))
+        .degrees(-15 + (state.isTapping ? state.energy * 10 : 0))
     }
 
     private var burstIntensity: Double {
         settings.mood * 0.6 + 0.2
-    }
-
-    func move(to point: CGPoint) {
-        position = point
-    }
-
-    func tap() {
-        guard settings.animateOnClick else { return }
-        clickHistory.record()
-        energy = clickHistory.energy()
-
-        isTapping = true
-        burstTrigger += 1
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
-            isTapping = false
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            energy = clickHistory.energy()
-        }
-    }
-}
-
-private class ClickHistory {
-    private var clicks: [Date] = []
-
-    func record() {
-        clicks.append(Date())
-        prune()
-    }
-
-    func energy() -> Double {
-        prune()
-        guard clicks.count >= 2 else { return 0 }
-        let intervals = zip(clicks, clicks.dropFirst()).map { $1.timeIntervalSince($0) }
-        let avg = intervals.reduce(0, +) / Double(intervals.count)
-        let rate = max(0, min(1, 1.0 - (avg / 0.4)))
-        return rate
-    }
-
-    private func prune() {
-        let cutoff = Date().addingTimeInterval(-1.0)
-        clicks.removeAll { $0 < cutoff }
     }
 }
 
@@ -101,15 +52,16 @@ struct BurstView: View {
 
     var body: some View {
         let rayCount = max(6, Int(intensity * 18))
-        GeometryReader { _ in
-            ZStack {
-                ForEach(0..<rayCount, id: \.self) { i in
-                    BurstRay(index: i, total: rayCount)
-                        .fill(Color.white)
-                        .overlay(BurstRay(index: i, total: rayCount).stroke(Color.black, lineWidth: 1))
-                        .frame(width: 8 + intensity * 12, height: 24 + intensity * 30)
-                        .rotationEffect(.degrees(Double(i) / Double(rayCount) * 360))
-                }
+        ZStack {
+            ForEach(0..<rayCount, id: \.self) { i in
+                BurstRay(index: i, total: rayCount)
+                    .fill(Color.white)
+                    .overlay(
+                        BurstRay(index: i, total: rayCount)
+                            .stroke(Color.black, lineWidth: 1)
+                    )
+                    .frame(width: 8 + intensity * 12, height: 24 + intensity * 30)
+                    .rotationEffect(.degrees(Double(i) / Double(rayCount) * 360))
             }
         }
         .frame(width: 140, height: 140)
@@ -207,9 +159,7 @@ struct HandShape: Shape {
     }
 
     private func middleFingerPath(in rect: CGRect) -> Path {
-        var path = pointingHandPath(in: rect)
-        // Same hand, but the middle finger is raised higher visually by scaling
-        // For simplicity reuse the pointing hand path.
+        let path = pointingHandPath(in: rect)
         return path
     }
 }
