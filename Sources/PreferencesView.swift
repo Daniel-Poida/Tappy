@@ -78,14 +78,14 @@ struct PreferencesView: View {
                         sectionTitle("04", "While you’re away")
                         compactToggle("Idle animation", value: $settings.idleEnabled)
                         HStack(spacing: 8) {
-                            Text("Start after").font(.system(size: 12, weight: .medium)).frame(width: 102, alignment: .leading)
+                            Text("Every").font(.system(size: 12, weight: .medium)).frame(width: 102, alignment: .leading)
                             Slider(value: $settings.idleDelay, in: 3...60, step: 1)
-                                .disabled(!settings.idleEnabled).accessibilityLabel("Idle animation delay")
+                                .disabled(!settings.idleEnabled).accessibilityLabel("Idle animation interval")
                             Text("\(Int(settings.idleDelay)) sec").font(.system(size: 10, design: .monospaced)).frame(width: 58, alignment: .trailing)
                         }
                         Button("Preview idle animation") { preview.previewIdle() }
                             .disabled(!settings.idleEnabled || reduceMotion).controlSize(.small)
-                        Text("Stops as soon as you move, click or type.").font(.system(size: 10)).foregroundStyle(.secondary)
+                        Text("Once per interval. Stops when you move, click or type.").font(.system(size: 10)).foregroundStyle(.secondary)
                     }
                     Spacer(minLength: 0)
                 }.frame(width: 383, height: 540, alignment: .top)

@@ -121,13 +121,24 @@ import Cocoa
         expect(shieldTaps == 3, "Every mouse button produces a presentation tap")
         let diskVersion = try String(contentsOfFile: "VERSION", encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
         expect(diskVersion == AppVersion.short, "Source and installer versions agree")
-        var idle = IdleAnimationClock()
-        expect(idle.update(idleFor: 9, delay: 10, enabled: true, at: 100) == nil, "Idle animation waits for the configured delay")
-        expect(idle.update(idleFor: 10, delay: 10, enabled: true, at: 101) == 0, "Idle animation starts at the threshold")
-        expect(idle.update(idleFor: 12, delay: 10, enabled: true, at: 103) == 2, "Idle animation progresses with monotonic time")
-        expect(idle.update(idleFor: 0, delay: 10, enabled: true, at: 104) == nil, "Any input cancels idle immediately")
-        expect(idle.update(idleFor: 10, delay: 10, enabled: false, at: 114) == nil, "Idle animation can be disabled")
-        expect(idle.update(idleFor: 20, delay: 10, enabled: true, at: 124) == 0, "Idle restarts from the first frame after interruption")
+        for style in PointerStyle.allCases {
+            let duration = IdlePose.duration(for: style)
+            for interval in [3.0, 10.0, 30.0, 60.0] {
+                func phase(_ idleFor: Double, enabled: Bool = true) -> Double? {
+                    IdleAnimationSchedule.phase(idleFor: idleFor, interval: interval, duration: duration, enabled: enabled)
+                }
+                expect(phase(interval - 0.01) == nil, "First animation waits for the full configured interval")
+                for repetition in 1...5 {
+                    let boundary = interval * Double(repetition)
+                    expect(phase(boundary) == 0, "One animation starts at every idle interval boundary")
+                    expect(abs((phase(boundary + 0.5) ?? -1) - 0.5) < 0.000001, "Single animation progresses normally")
+                    expect(phase(boundary + duration + 0.01) == nil, "Pointer stays still after one animation")
+                    expect(phase(boundary + interval - 0.01) == nil, "No repeat before the next configured boundary")
+                }
+                expect(phase(0) == nil, "Input resets the interval countdown")
+                expect(phase(interval, enabled: false) == nil, "Idle animation can be disabled")
+            }
+        }
         for name in IdleImages.names { expect(IdleImages.images[name] != nil, "All idle animation layers are bundled") }
         for i in 0..<450 {
             let pose = IdlePose(time: Double(i) / 100)
@@ -139,6 +150,11 @@ import Cocoa
         expect(abs(IdlePose(time: 0.7).lift - 33) < 0.001, "Wand reaches the peak halfway through the quick toss")
         expect(IdlePose(time: 1.04).handMix == 1 && IdlePose(time: 1.05).handMix == 0 && IdlePose(time: 1.1).handMix == 0,
                "Catch switches to one coherent closed grip without overlapping palms")
+        for time in [2.2, 4.4, 60.7, 120.7] {
+            let pose = IdlePose(time: time)
+            expect(!pose.isFlying && pose.handMix == 0 && pose.rotation == 0, "Wand poses do not loop by themselves")
+        }
+        expect(IdlePose(time: 60.8).fidgetWeights == [1, 0, 0], "Finger poses do not loop by themselves")
         print("PASS: \(checks) assertions — click dynamics, audio, characters, geometry and multi-display coordinates")
     }
 }

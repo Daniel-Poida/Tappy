@@ -34,7 +34,6 @@ final class CursorState: ObservableObject {
     @Published var lean = -8.0
     @Published var idleTime: Double?
     private var orientation = PointerOrientation()
-    private var idleClock = IdleAnimationClock()
     private var lastActivity = ProcessInfo.processInfo.systemUptime
     private var idlePreviewStart: TimeInterval?
     private var dynamics = ClickDynamics()
@@ -56,16 +55,17 @@ final class CursorState: ObservableObject {
         if abs(energy - dynamics.energy) > 0.005 { energy = dynamics.energy }
         if let start = idlePreviewStart, settings.idleEnabled, !reduceMotion {
             if time - start > 0.3, let systemIdle, systemIdle < 0.06 { noteActivity(at: time); return }
-            if time - start < 8 { idleTime = time - start; return }
+            if time - start < IdlePose.duration(for: settings.pointerStyle) { idleTime = time - start; return }
             noteActivity(at: time)
         }
         let idleFor = max(0, min(time - lastActivity, systemIdle ?? .infinity))
-        let next = idleClock.update(idleFor: idleFor, delay: settings.idleDelay,
-                                    enabled: settings.idleEnabled && !reduceMotion, at: time)
+        let next = IdleAnimationSchedule.phase(idleFor: idleFor, interval: settings.idleDelay,
+                                               duration: IdlePose.duration(for: settings.pointerStyle),
+                                               enabled: settings.idleEnabled && !reduceMotion)
         if next != idleTime { idleTime = next }
     }
     func noteActivity(at time: TimeInterval = ProcessInfo.processInfo.systemUptime) {
-        lastActivity = time; idleClock.reset(); idlePreviewStart = nil
+        lastActivity = time; idlePreviewStart = nil
         if idleTime != nil { idleTime = nil }
     }
     func previewIdle() {

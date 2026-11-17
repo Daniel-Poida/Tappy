@@ -1,6 +1,6 @@
-# Tappy 1.3
+# Tappy 1.3.1
 
-[Download Tappy 1.3 for macOS](https://github.com/Daniel-Poida/Tappy/releases/download/v1.3/Tappy-1.3.dmg) · [Release notes](https://github.com/Daniel-Poida/Tappy/releases/tag/v1.3)
+[Download Tappy 1.3.1 for macOS](https://github.com/Daniel-Poida/Tappy/releases/download/v1.3.1/Tappy-1.3.1.dmg) · [Release notes](https://github.com/Daniel-Poida/Tappy/releases/tag/v1.3.1)
 
 A playful macOS pointer for presentations, demos and screen shares. Four cartoon gloves, each with exactly four fingers, its own sound and a readable dark contour with a narrow white keyline.
 
@@ -15,21 +15,21 @@ A playful macOS pointer for presentations, demos and screen shares. Four cartoon
 
 | Light appearance | Dark appearance |
 | --- | --- |
-| ![Tappy 1.3 settings in light appearance](Assets/Tappy-1.3-settings-light.png) | ![Tappy 1.3 settings in dark appearance](Assets/Tappy-1.3-settings-dark.png) |
+| ![Tappy 1.3.1 settings in light appearance](Assets/Tappy-1.3.1-settings-light.png) | ![Tappy 1.3.1 settings in dark appearance](Assets/Tappy-1.3.1-settings-dark.png) |
 
-![The four Tappy characters on light and dark backgrounds](Assets/Tappy-1.3-preview.png)
+![The four Tappy characters on light and dark backgrounds](Assets/Tappy-1.3.1-preview.png)
 
 <details>
 <summary>Idle animation frames: finger play and quick wand tosses</summary>
 
-![Idle finger poses and independent wand toss frames](Assets/Tappy-1.3-idle-preview.png)
+![Idle finger poses and independent wand toss frames](Assets/Tappy-1.3.1-idle-preview.png)
 
 </details>
 
-## What's new in 1.3
+## What's new in 1.3.1
 
 - Corrected finger anatomy on the wand gloves: one thumb and three curled fingers. Decorative stripes remain only on the back of the classic glove, not on the palms holding objects.
-- Configurable idle animations (3–60 seconds, one minute by default): the classic glove plays with its fingers; wand gloves toss and catch their objects. Mouse, scrolling and keyboard activity cancel the animation immediately. Idle motion is disabled by the system Reduce Motion setting.
+- Configurable idle animations (3–60 seconds, one minute by default): one animation at each configured interval, with a still pointer between them. For 30 seconds, animations start at 30, 60 and 90 seconds of inactivity. The classic glove plays with its fingers; wand gloves toss and catch their objects. Mouse, scrolling and keyboard activity cancel the animation immediately. Idle motion is disabled by the system Reduce Motion setting.
 - Clicking the status icon again dismisses its menu. Character and appearance selection are kept in Settings.
 - One window without scrolling: characters and preview on the left, every slider on the right.
 - The hand's angle follows its screen position and movement with a damped response.
@@ -63,7 +63,7 @@ Build a universal Apple Silicon + Intel application, regenerate icons, and creat
 ./build-dmg.sh
 ```
 
-Outputs `build/Tappy.app`, `build/Tappy-1.3.dmg` and its SHA-256 checksum. The local bundle and DMG are ad-hoc signed; distribution with Apple notarization requires a Developer ID certificate.
+Outputs `build/Tappy.app`, `build/Tappy-1.3.1.dmg` and its SHA-256 checksum. The local bundle and DMG are ad-hoc signed; distribution with Apple notarization requires a Developer ID certificate.
 
 Checks cover click energy and decay, volume scaling, playable and unclipped distinct sounds, artwork loading, fixed click hotspots at all animation phases, short-to-full-screen forearm length, opacity falloff, motion damping, presentation mouse handling, idle timing and interruption, animation layer loading and multi-display coordinates.
 

@@ -14,7 +14,7 @@ trap 'rm -rf "$STAGING_DIR"' EXIT
 cp -R "$APP_PATH" "$STAGING_DIR/"
 ln -s /Applications "$STAGING_DIR/Applications"
 cat > "$STAGING_DIR/Start here.txt" <<'README'
-TAPPY 1.3 — POLISHED POINTERS
+TAPPY 1.3.1 — POLISHED POINTERS
 
 Drag Tappy into Applications, then open it.
 Choose your character and try clicking the preview.
@@ -29,7 +29,8 @@ Four characters, four sounds:
 Click faster for a bigger cartoon reaction and a louder sound.
 Adjust personality, pointer size, forearm length and opacity, shadow and master volume.
 Choose Light, Dark or System in Settings.
-Set an idle delay for finger play and wand juggling.
+Set the idle interval for finger play and wand juggling.
+One animation runs at each interval (for example at 30, 60, 90 seconds).
 
 Control + Option + P — enable / disable Tappy
 Control + Option + T — enable / exit Presentation Mode

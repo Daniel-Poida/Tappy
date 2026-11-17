@@ -1,14 +1,14 @@
 import SwiftUI
 import Cocoa
 
-struct IdleAnimationClock {
-    private var startedAt: TimeInterval?
-    mutating func update(idleFor: Double, delay: Double, enabled: Bool, at time: TimeInterval) -> Double? {
-        guard enabled, idleFor >= max(0, delay) else { reset(); return nil }
-        if startedAt == nil { startedAt = time }
-        return max(0, time - (startedAt ?? time))
+enum IdleAnimationSchedule {
+    /// Play once at each idle interval boundary, then remain still until the next.
+    static func phase(idleFor: Double, interval: Double, duration: Double, enabled: Bool) -> Double? {
+        let interval = max(0.001, interval)
+        guard enabled, idleFor.isFinite, idleFor >= interval else { return nil }
+        let elapsed = idleFor.truncatingRemainder(dividingBy: interval)
+        return elapsed < min(duration, interval) ? elapsed : nil
     }
-    mutating func reset() { startedAt = nil }
 }
 
 enum InputIdleTime {
@@ -30,8 +30,9 @@ enum InputIdleTime {
 
 struct IdlePose {
     let cycle: Double
-    init(time: Double) { cycle = max(0, time).truncatingRemainder(dividingBy: 4.4) }
-    private var tossCycle: Double { cycle.truncatingRemainder(dividingBy: 2.2) }
+    init(time: Double) { cycle = max(0, time) }
+    static func duration(for style: PointerStyle) -> Double { style == .classic ? 2.6 : 1.15 }
+    private var tossCycle: Double { cycle }
     /// A complete toss includes anticipation, release, one revolution, and a catch.
     var flight: Double {
         guard tossCycle >= 0.35 && tossCycle <= 1.05 else { return 0 }
