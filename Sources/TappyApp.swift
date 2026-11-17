@@ -38,6 +38,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let menu = NSMenu()
         menu.addItem(NSMenuItem(title: "Toggle Tappy", action: #selector(toggle), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "Presentation Mode", action: #selector(togglePresentationMode), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "Request Accessibility Access", action: #selector(requestAccessibility), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Preferences...", action: #selector(showPreferences), keyEquivalent: ","))
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q"))
@@ -49,22 +51,38 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         updateIcon()
     }
 
+    @objc private func togglePresentationMode() {
+        overlay?.presentationMode.toggle()
+        updatePresentationModeItem()
+    }
+
+    @objc private func requestAccessibility() {
+        CursorOverlayWindow.requestAccessibility()
+    }
+
     private func updateIcon() {
         let active = overlay?.isActive ?? false
         statusItem?.button?.image = NSImage(systemSymbolName: active ? "hand.point.up.fill" : "hand.raised.slash.fill",
                                             accessibilityDescription: active ? "Tappy active" : "Tappy inactive")
     }
 
+    private func updatePresentationModeItem() {
+        guard let menu = statusItem?.menu else { return }
+        let item = menu.item(at: 1)
+        let enabled = overlay?.presentationMode ?? false
+        item?.state = enabled ? .on : .off
+    }
+
     @objc private func showPreferences() {
         if prefsWindow == nil {
-            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 420, height: 340),
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 420, height: 380),
                                   styleMask: [.titled, .closable],
                                   backing: .buffered,
                                   defer: false)
             window.title = "Tappy Preferences"
             window.center()
-            let hostingView = NSHostingView(rootView: PreferencesView())
-            hostingView.frame = window.contentView?.bounds ?? NSRect(x: 0, y: 0, width: 420, height: 340)
+            let hostingView = NSHostingView(rootView: PreferencesView(overlay: overlay))
+            hostingView.frame = window.contentView?.bounds ?? NSRect(x: 0, y: 0, width: 420, height: 380)
             hostingView.autoresizingMask = [.width, .height]
             window.contentView = hostingView
             prefsWindow = window
@@ -81,6 +99,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
 struct PreferencesView: View {
     @StateObject private var settings = TappySettings.shared
+    weak var overlay: CursorOverlayWindow?
 
     var body: some View {
         Form {
@@ -104,6 +123,10 @@ struct PreferencesView: View {
 
             Toggle("Animate on click", isOn: $settings.animateOnClick)
             Toggle("Play knock sound", isOn: $settings.soundEnabled)
+            Toggle("Presentation mode (clicks only tap)", isOn: Binding(
+                get: { overlay?.presentationMode ?? false },
+                set: { overlay?.presentationMode = $0 }
+            ))
 
             HStack {
                 Text("Toggle hotkey")
@@ -115,6 +138,6 @@ struct PreferencesView: View {
         .formStyle(.grouped)
         .padding()
         .frame(minWidth: 380, idealWidth: 420, maxWidth: .infinity,
-               minHeight: 280, idealHeight: 340, maxHeight: .infinity)
+               minHeight: 320, idealHeight: 380, maxHeight: .infinity)
     }
 }

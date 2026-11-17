@@ -1,16 +1,21 @@
 import Cocoa
 import SwiftUI
 import CoreGraphics
+import ApplicationServices
 
 class CursorOverlayWindow: NSWindow {
     private var cursorView = CursorView()
-    private var eventTap: CFMachPort?
-    private var runLoopSource: CFRunLoopSource?
     private var trackingTimer: Timer?
+    private var clickMonitor: Any?
 
     private static weak var sharedInstance: CursorOverlayWindow?
 
     var isActive: Bool = false
+    var presentationMode: Bool = false {
+        didSet {
+            ignoresMouseEvents = !presentationMode
+        }
+    }
 
     init() {
         let frame = NSScreen.main?.frame ?? NSRect(x: 0, y: 0, width: 1920, height: 1080)
@@ -73,37 +78,15 @@ class CursorOverlayWindow: NSWindow {
     }
 
     private func startTracking() {
-        // Timer-based fallback: works without Accessibility
+        // Timer-based cursor tracking: works without Accessibility
         trackingTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
             self?.updateCursorPosition()
         }
         trackingTimer?.tolerance = 1.0 / 120.0
 
-        // Try to set up a CGEvent tap for click detection (requires Accessibility)
-        guard eventTap == nil else { return }
-
-        let eventMask = (1 << CGEventType.leftMouseDown.rawValue)
-            | (1 << CGEventType.rightMouseDown.rawValue)
-
-        if let tap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
-            place: .headInsertEventTap,
-            options: .defaultTap,
-            eventsOfInterest: CGEventMask(eventMask),
-            callback: { proxy, type, event, refcon in
-                CursorOverlayWindow.handleEvent(proxy: proxy, type: type, event: event)
-            },
-            userInfo: nil
-        ) {
-            eventTap = tap
-            runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
-            if let source = runLoopSource {
-                CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
-            }
-            CGEvent.tapEnable(tap: tap, enable: true)
-        } else {
-            // Fallback click monitor (may also require Accessibility, but try anyway)
-            NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+        // Global click monitor: requires Accessibility, but won't show a dialog if denied
+        if CursorOverlayWindow.accessibilityEnabled() {
+            clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
                 self?.cursorView.tap()
                 SoundManager.shared.playKnock()
             }
@@ -114,20 +97,15 @@ class CursorOverlayWindow: NSWindow {
         trackingTimer?.invalidate()
         trackingTimer = nil
 
-        if let tap = eventTap {
-            CGEvent.tapEnable(tap: tap, enable: false)
-            eventTap = nil
-        }
-        if let source = runLoopSource {
-            CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
-            runLoopSource = nil
+        if let monitor = clickMonitor {
+            NSEvent.removeMonitor(monitor)
+            clickMonitor = nil
         }
     }
 
     private func updateCursorPosition() {
         let mouseLocation = NSEvent.mouseLocation
 
-        // Find which screen the cursor is on and move the window there
         if let screen = NSScreen.screens.first(where: { NSMouseInRect(mouseLocation, $0.frame, false) }) {
             if self.frame != screen.frame {
                 setFrame(screen.frame, display: false)
@@ -141,20 +119,36 @@ class CursorOverlayWindow: NSWindow {
     }
 
     private func convertToWindowCoordinates(_ point: NSPoint, screen: NSScreen) -> CGPoint {
-        // NSEvent.mouseLocation uses bottom-left origin relative to the full desktop.
-        // SwiftUI .position inside the overlay window uses top-left origin.
         let windowY = screen.frame.height - (point.y - screen.frame.origin.y)
         let windowX = point.x - screen.frame.origin.x
         return CGPoint(x: windowX, y: windowY)
     }
 
-    private static func handleEvent(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
-        if type == .leftMouseDown || type == .rightMouseDown {
-            DispatchQueue.main.async {
-                sharedInstance?.cursorView.tap()
-                SoundManager.shared.playKnock()
-            }
+    // MARK: - Presentation Mode
+
+    override func mouseDown(with event: NSEvent) {
+        if presentationMode {
+            cursorView.tap()
+            SoundManager.shared.playKnock()
         }
-        return Unmanaged.passUnretained(event)
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        if presentationMode {
+            cursorView.tap()
+            SoundManager.shared.playKnock()
+        }
+    }
+
+    // MARK: - Accessibility
+
+    static func accessibilityEnabled() -> Bool {
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: false]
+        return AXIsProcessTrustedWithOptions(options as CFDictionary)
+    }
+
+    static func requestAccessibility() {
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
+        AXIsProcessTrustedWithOptions(options as CFDictionary)
     }
 }

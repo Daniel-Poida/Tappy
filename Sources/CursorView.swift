@@ -56,6 +56,7 @@ struct CursorView: View {
     }
 
     func tap() {
+        guard settings.animateOnClick else { return }
         clickHistory.record()
         energy = clickHistory.energy()
 
