@@ -6,6 +6,7 @@ class CursorOverlayWindow: NSWindow {
     private var cursorView = CursorView()
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
+    private var trackingTimer: Timer?
 
     private static weak var sharedInstance: CursorOverlayWindow?
 
@@ -36,7 +37,7 @@ class CursorOverlayWindow: NSWindow {
     func toggle() {
         isActive.toggle()
         if isActive {
-            setFrame(NSScreen.main?.frame ?? NSRect(x: 0, y: 0, width: 1920, height: 1080), display: true)
+            updateFrameForCursor()
             makeKeyAndOrderFront(nil)
             orderFrontRegardless()
             startTracking()
@@ -55,6 +56,14 @@ class CursorOverlayWindow: NSWindow {
         showSystemCursor()
     }
 
+    private func updateFrameForCursor() {
+        let mouseLocation = NSEvent.mouseLocation
+        let screen = NSScreen.screens.first { NSMouseInRect(mouseLocation, $0.frame, false) } ?? NSScreen.main
+        if let frame = screen?.frame {
+            setFrame(frame, display: true)
+        }
+    }
+
     private func hideSystemCursor() {
         CGDisplayHideCursor(CGMainDisplayID())
     }
@@ -64,15 +73,19 @@ class CursorOverlayWindow: NSWindow {
     }
 
     private func startTracking() {
+        // Timer-based fallback: works without Accessibility
+        trackingTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+            self?.updateCursorPosition()
+        }
+        trackingTimer?.tolerance = 1.0 / 120.0
+
+        // Try to set up a CGEvent tap for click detection (requires Accessibility)
         guard eventTap == nil else { return }
 
-        let eventMask = (1 << CGEventType.mouseMoved.rawValue)
-            | (1 << CGEventType.leftMouseDown.rawValue)
+        let eventMask = (1 << CGEventType.leftMouseDown.rawValue)
             | (1 << CGEventType.rightMouseDown.rawValue)
-            | (1 << CGEventType.leftMouseDragged.rawValue)
-            | (1 << CGEventType.rightMouseDragged.rawValue)
 
-        guard let tap = CGEvent.tapCreate(
+        if let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
             place: .headInsertEventTap,
             options: .defaultTap,
@@ -81,22 +94,26 @@ class CursorOverlayWindow: NSWindow {
                 CursorOverlayWindow.handleEvent(proxy: proxy, type: type, event: event)
             },
             userInfo: nil
-        ) else {
-            DispatchQueue.main.async {
-                self.showPermissionsAlert()
+        ) {
+            eventTap = tap
+            runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+            if let source = runLoopSource {
+                CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
             }
-            return
+            CGEvent.tapEnable(tap: tap, enable: true)
+        } else {
+            // Fallback click monitor (may also require Accessibility, but try anyway)
+            NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+                self?.cursorView.tap()
+                SoundManager.shared.playKnock()
+            }
         }
-
-        eventTap = tap
-        runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
-        if let source = runLoopSource {
-            CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
-        }
-        CGEvent.tapEnable(tap: tap, enable: true)
     }
 
     private func stopTracking() {
+        trackingTimer?.invalidate()
+        trackingTimer = nil
+
         if let tap = eventTap {
             CGEvent.tapEnable(tap: tap, enable: false)
             eventTap = nil
@@ -107,34 +124,37 @@ class CursorOverlayWindow: NSWindow {
         }
     }
 
-    private func showPermissionsAlert() {
-        let alert = NSAlert()
-        alert.messageText = "Tappy needs Accessibility access"
-        alert.informativeText = "To track your cursor and clicks across the screen, Tappy needs Accessibility permissions. Please enable it in System Settings → Privacy & Security → Accessibility."
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "Open System Settings")
-        alert.addButton(withTitle: "Cancel")
-        if alert.runModal() == .alertFirstButtonReturn {
-            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+    private func updateCursorPosition() {
+        let mouseLocation = NSEvent.mouseLocation
+
+        // Find which screen the cursor is on and move the window there
+        if let screen = NSScreen.screens.first(where: { NSMouseInRect(mouseLocation, $0.frame, false) }) {
+            if self.frame != screen.frame {
+                setFrame(screen.frame, display: false)
+            }
+            let converted = convertToWindowCoordinates(mouseLocation, screen: screen)
+            cursorView.move(to: converted)
+        } else if let screen = NSScreen.main {
+            let converted = convertToWindowCoordinates(mouseLocation, screen: screen)
+            cursorView.move(to: converted)
         }
     }
 
+    private func convertToWindowCoordinates(_ point: NSPoint, screen: NSScreen) -> CGPoint {
+        // NSEvent.mouseLocation uses bottom-left origin relative to the full desktop.
+        // SwiftUI .position inside the overlay window uses top-left origin.
+        let windowY = screen.frame.height - (point.y - screen.frame.origin.y)
+        let windowX = point.x - screen.frame.origin.x
+        return CGPoint(x: windowX, y: windowY)
+    }
+
     private static func handleEvent(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
-        switch type {
-        case .mouseMoved, .leftMouseDragged, .rightMouseDragged:
-            let point = event.location
-            DispatchQueue.main.async {
-                sharedInstance?.cursorView.move(to: CGPoint(x: point.x, y: point.y))
-            }
-            return Unmanaged.passUnretained(event)
-        case .leftMouseDown, .rightMouseDown:
+        if type == .leftMouseDown || type == .rightMouseDown {
             DispatchQueue.main.async {
                 sharedInstance?.cursorView.tap()
                 SoundManager.shared.playKnock()
             }
-            return Unmanaged.passUnretained(event)
-        default:
-            return Unmanaged.passUnretained(event)
         }
+        return Unmanaged.passUnretained(event)
     }
 }
