@@ -1,6 +1,5 @@
 import Cocoa
 import SwiftUI
-import ApplicationServices
 
 final class CursorOverlayWindow: NSWindow, ObservableObject {
     let cursorState = CursorState()
@@ -9,8 +8,7 @@ final class CursorOverlayWindow: NSWindow, ObservableObject {
     private var trackingTimer: Timer?
     private var clickMonitor: Any?
     private var localMonitor: Any?
-    private var eventTap: CFMachPort?
-    private var tapSource: CFRunLoopSource?
+    private var presentationShields: [PresentationShieldWindow] = []
     private var cursorHidden = false
     var onChange: (() -> Void)?
 
@@ -29,6 +27,7 @@ final class CursorOverlayWindow: NSWindow, ObservableObject {
         view.frame = NSRect(origin: .zero, size: frame.size)
         view.autoresizingMask = [.width, .height]
         contentView = view
+        NotificationCenter.default.addObserver(self, selector: #selector(screensChanged), name: NSApplication.didChangeScreenParametersNotification, object: nil)
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(suspend), name: NSWorkspace.sessionDidResignActiveNotification, object: nil)
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(suspend), name: NSWorkspace.willSleepNotification, object: nil)
     }
@@ -58,41 +57,38 @@ final class CursorOverlayWindow: NSWindow, ObservableObject {
 
     @discardableResult
     func setPresentation(_ enabled: Bool) -> Bool {
+        guard enabled != presentationMode else { return true }
         if !enabled {
             presentationMode = false
-            if let eventTap { CGEvent.tapEnable(tap: eventTap, enable: false) }
-            if let tapSource { CFRunLoopRemoveSource(CFRunLoopGetMain(), tapSource, .commonModes) }
-            if let eventTap { CFMachPortInvalidate(eventTap) }
-            eventTap = nil; tapSource = nil
+            presentationShields.forEach { $0.orderOut(nil) }
+            presentationShields.removeAll()
             onChange?()
             return true
         }
-        guard !presentationMode else { return true }
-        guard Self.accessibilityEnabled() else { return false }
-        let types: [CGEventType] = [.leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp,
-                                   .otherMouseDown, .otherMouseUp, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged, .scrollWheel]
-        let mask = types.reduce(CGEventMask(0)) { $0 | (1 << $1.rawValue) }
-        guard let tap = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap, options: .defaultTap,
-            eventsOfInterest: mask, callback: { _, type, event, context in
-                guard let context else { return Unmanaged.passUnretained(event) }
-                let overlay = Unmanaged<CursorOverlayWindow>.fromOpaque(context).takeUnretainedValue()
-                if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-                    // Fail open: a disabled tap must never leave the UI claiming clicks are protected.
-                    DispatchQueue.main.async { overlay.setPresentation(false) }
-                    return Unmanaged.passUnretained(event)
-                }
-                guard overlay.presentationMode else { return Unmanaged.passUnretained(event) }
-                if type == .leftMouseDown || type == .rightMouseDown || type == .otherMouseDown { overlay.tap() }
-                return nil
-            }, userInfo: Unmanaged.passUnretained(self).toOpaque()) else { return false }
-        eventTap = tap
-        tapSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
-        if let tapSource { CFRunLoopAddSource(CFRunLoopGetMain(), tapSource, .commonModes) }
-        presentationMode = true
+        guard !NSScreen.screens.isEmpty else { return false }
         activate()
-        CGEvent.tapEnable(tap: tap, enable: true)
+        rebuildPresentationShields()
+        presentationMode = !presentationShields.isEmpty
         onChange?()
-        return true
+        return presentationMode
+    }
+
+    private func rebuildPresentationShields() {
+        let next = NSScreen.screens.map { screen in
+            PresentationShieldWindow(screen: screen) { [weak self] in self?.tap() }
+        }
+        next.forEach { $0.orderFrontRegardless() }
+        presentationShields.forEach { $0.orderOut(nil) }
+        presentationShields = next
+        orderFrontRegardless()
+    }
+    @objc private func screensChanged() {
+        if presentationMode {
+            rebuildPresentationShields()
+            presentationMode = !presentationShields.isEmpty
+            onChange?()
+        }
+        if isActive { updateCursorPosition() }
     }
 
     private func tap() {
@@ -102,7 +98,9 @@ final class CursorOverlayWindow: NSWindow, ObservableObject {
     }
     private func startTracking() {
         let timer = Timer(timeInterval: 1.0 / 90, repeats: true) { [weak self] _ in
-            self?.updateCursorPosition(); self?.cursorState.tick()
+            self?.updateCursorPosition()
+            self?.cursorState.tick(systemIdle: InputIdleTime.seconds,
+                                    reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
         }
         timer.tolerance = 0.002
         RunLoop.main.add(timer, forMode: .common)
@@ -119,14 +117,9 @@ final class CursorOverlayWindow: NSWindow, ObservableObject {
         let point = NSEvent.mouseLocation
         guard let screen = NSScreen.screens.first(where: { NSMouseInRect(point, $0.frame, false) }) ?? NSScreen.main else { return }
         if frame != screen.frame { setFrame(screen.frame, display: false) }
-        cursorState.move(to: Self.localPosition(point, frame: screen.frame))
+        cursorState.move(to: Self.localPosition(point, frame: screen.frame), canvas: screen.frame.size)
     }
     static func localPosition(_ point: NSPoint, frame: NSRect) -> CGPoint {
         CGPoint(x: point.x - frame.minX, y: frame.maxY - point.y)
-    }
-    static func accessibilityEnabled() -> Bool { AXIsProcessTrusted() }
-    static func requestAccessibility() {
-        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
-        AXIsProcessTrustedWithOptions(options as CFDictionary)
     }
 }

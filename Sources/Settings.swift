@@ -11,19 +11,30 @@ final class TappySettings: ObservableObject {
     @Published var soundEnabled: Bool { didSet { defaults.set(soundEnabled, forKey: "soundEnabled") } }
     @Published var volume: Double { didSet { defaults.set(volume, forKey: "volume") } }
     @Published var shadowEnabled: Bool { didSet { defaults.set(shadowEnabled, forKey: "shadowEnabled") } }
+    @Published var armOpacity: Double { didSet { defaults.set(armOpacity, forKey: "armOpacity") } }
+    @Published var armExtension: Double { didSet { defaults.set(armExtension, forKey: "armExtension") } }
+    @Published var theme: AppTheme { didSet { defaults.set(theme.rawValue, forKey: "theme") } }
+    @Published var idleEnabled: Bool { didSet { defaults.set(idleEnabled, forKey: "idleEnabled") } }
+    @Published var idleDelay: Double { didSet { defaults.set(idleDelay, forKey: "idleDelay") } }
     @Published var pointerStyle: PointerStyle { didSet { defaults.set(pointerStyle.rawValue, forKey: "pointerStyle") } }
     var soundStyle: TapSound { pointerStyle.sound }
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         defaults.register(defaults: ["mood": 0.65, "pointerSize": 1.0, "animateOnClick": true,
-            "soundEnabled": true, "volume": 0.55, "shadowEnabled": true])
+            "soundEnabled": true, "volume": 0.55, "shadowEnabled": true, "armOpacity": 0.2,
+            "idleEnabled": true, "idleDelay": 60.0])
         mood = min(1, max(0, defaults.double(forKey: "mood")))
         pointerSize = min(1.6, max(0.65, defaults.object(forKey: "pointerSize") as? Double ?? 1))
         animateOnClick = defaults.bool(forKey: "animateOnClick")
         soundEnabled = defaults.bool(forKey: "soundEnabled")
         volume = min(1, max(0, defaults.double(forKey: "volume")))
         shadowEnabled = defaults.bool(forKey: "shadowEnabled")
+        armOpacity = min(1, max(0, defaults.double(forKey: "armOpacity")))
+        armExtension = min(1, max(0, defaults.double(forKey: "armExtension")))
+        theme = AppTheme(rawValue: defaults.string(forKey: "theme") ?? "") ?? .system
+        idleEnabled = defaults.bool(forKey: "idleEnabled")
+        idleDelay = min(60, max(3, defaults.double(forKey: "idleDelay")))
         pointerStyle = PointerStyle(rawValue: defaults.string(forKey: "pointerStyle") ?? "") ?? .classic
     }
 }

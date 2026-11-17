@@ -3,7 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 APP_NAME="Tappy"
-APP_VERSION="1.1"
+APP_VERSION="$(cat VERSION)"
 BUILD_DIR="$PWD/build"
 APP_PATH="$BUILD_DIR/$APP_NAME.app"
 export CLANG_MODULE_CACHE_PATH="$PWD/.build/ModuleCache"
@@ -16,7 +16,7 @@ done
 ARM_BIN="$(swift build -c release --arch arm64 --show-bin-path --disable-sandbox)/$APP_NAME"
 INTEL_BIN="$(swift build -c release --arch x86_64 --show-bin-path --disable-sandbox)/$APP_NAME"
 
-# Render the icon from the exact vector artwork used by the live pointer.
+# Render the icon from the production glove artwork.
 "$ARM_BIN" --export-assets "$PWD/Assets"
 iconutil -c icns "$PWD/Assets/Tappy.iconset" -o "$PWD/Assets/Tappy.icns"
 rm -rf "$APP_PATH"
@@ -24,6 +24,7 @@ mkdir -p "$APP_PATH/Contents/MacOS" "$APP_PATH/Contents/Resources"
 lipo -create "$ARM_BIN" "$INTEL_BIN" -output "$APP_PATH/Contents/MacOS/$APP_NAME"
 chmod +x "$APP_PATH/Contents/MacOS/$APP_NAME"
 cp "Assets/$APP_NAME.icns" "$APP_PATH/Contents/Resources/$APP_NAME.icns"
+cp -R "$(dirname "$ARM_BIN")/Tappy_Tappy.bundle" "$APP_PATH/Contents/Resources/"
 
 cat > "$APP_PATH/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -35,7 +36,7 @@ cat > "$APP_PATH/Contents/Info.plist" <<PLIST
     <key>CFBundleDisplayName</key><string>$APP_NAME</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>$APP_VERSION</string>
-    <key>CFBundleVersion</key><string>110</string>
+    <key>CFBundleVersion</key><string>130</string>
     <key>LSMinimumSystemVersion</key><string>13.0</string>
     <key>LSUIElement</key><true/>
     <key>NSHighResolutionCapable</key><true/>

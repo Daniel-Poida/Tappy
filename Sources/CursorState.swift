@@ -31,18 +31,51 @@ final class CursorState: ObservableObject {
     @Published var energy = 0.0
     @Published var impact = 0.0
     @Published var burstVisible = false
+    @Published var lean = -8.0
+    @Published var idleTime: Double?
+    private var orientation = PointerOrientation()
+    private var idleClock = IdleAnimationClock()
+    private var lastActivity = ProcessInfo.processInfo.systemUptime
+    private var idlePreviewStart: TimeInterval?
     private var dynamics = ClickDynamics()
     private var releaseWork: DispatchWorkItem?
     private var burstWork: DispatchWorkItem?
 
-    func move(to point: CGPoint) { position = point }
-    func tick(at time: TimeInterval = ProcessInfo.processInfo.systemUptime) {
+    func move(to point: CGPoint, canvas: CGSize? = nil) {
+        if hypot(point.x - position.x, point.y - position.y) > 0.1 { noteActivity() }
+        position = point
+        if let canvas { trackOrientation(at: point, canvas: canvas) }
+    }
+    func trackOrientation(at point: CGPoint, canvas: CGSize, time: TimeInterval = ProcessInfo.processInfo.systemUptime) {
+        let next = orientation.update(point: point, canvas: canvas, at: time)
+        if abs(lean - next) > 0.025 { lean = next }
+    }
+    func tick(at time: TimeInterval = ProcessInfo.processInfo.systemUptime, systemIdle: Double? = nil,
+              settings: TappySettings = .shared, reduceMotion: Bool = false) {
         dynamics.decay(at: time)
         if abs(energy - dynamics.energy) > 0.005 { energy = dynamics.energy }
+        if let start = idlePreviewStart, settings.idleEnabled, !reduceMotion {
+            if time - start > 0.3, let systemIdle, systemIdle < 0.06 { noteActivity(at: time); return }
+            if time - start < 8 { idleTime = time - start; return }
+            noteActivity(at: time)
+        }
+        let idleFor = max(0, min(time - lastActivity, systemIdle ?? .infinity))
+        let next = idleClock.update(idleFor: idleFor, delay: settings.idleDelay,
+                                    enabled: settings.idleEnabled && !reduceMotion, at: time)
+        if next != idleTime { idleTime = next }
+    }
+    func noteActivity(at time: TimeInterval = ProcessInfo.processInfo.systemUptime) {
+        lastActivity = time; idleClock.reset(); idlePreviewStart = nil
+        if idleTime != nil { idleTime = nil }
+    }
+    func previewIdle() {
+        idlePreviewStart = ProcessInfo.processInfo.systemUptime
+        idleTime = 0
     }
 
     @discardableResult
     func tap(settings: TappySettings) -> Double {
+        noteActivity()
         energy = dynamics.record(at: ProcessInfo.processInfo.systemUptime)
         impact = (0.16 + 0.84 * energy) * settings.mood
         guard settings.animateOnClick else { return energy }
@@ -68,6 +101,29 @@ final class CursorState: ObservableObject {
     func reset() {
         releaseWork?.cancel(); burstWork?.cancel()
         dynamics = ClickDynamics()
+        orientation = PointerOrientation()
+        lean = -8
+        noteActivity()
         isTapping = false; burstVisible = false; energy = 0; impact = 0
+    }
+}
+
+/// Position gives the hand a natural angle; velocity adds a small, damped lag.
+struct PointerOrientation {
+    private(set) var angle = -8.0
+    private var previousPoint: CGPoint?
+    private var previousTime: TimeInterval?
+    mutating func update(point: CGPoint, canvas: CGSize, at time: TimeInterval) -> Double {
+        let dt = min(0.1, max(0.001, time - (previousTime ?? time - 1.0 / 90)))
+        let x = min(1, max(0, point.x / max(1, canvas.width)))
+        var motion = 0.0
+        if let previousPoint, let previousTime, time > previousTime {
+            let velocity = (point.x - previousPoint.x) / max(0.001, time - previousTime)
+            motion = min(10, max(-10, velocity * 0.008))
+        }
+        let target = min(34, max(-34, -28 + x * 48 + motion))
+        angle += (target - angle) * (1 - exp(-dt / 0.12))
+        previousPoint = point; previousTime = time
+        return angle
     }
 }

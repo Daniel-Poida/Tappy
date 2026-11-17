@@ -8,10 +8,14 @@ struct CursorView: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             Color.clear
+            PointerArm(position: state.position, style: settings.pointerStyle, size: settings.pointerSize,
+                       tapping: state.isTapping, impact: state.impact, shadow: settings.shadowEnabled, reduceMotion: reduceMotion,
+                       lean: state.lean, lowerOpacity: settings.armOpacity, extensionFraction: settings.armExtension)
             TapBurst(impact: state.impact, visible: state.burstVisible, style: settings.pointerStyle, reduceMotion: reduceMotion)
                 .position(state.position)
             PointerSprite(style: settings.pointerStyle, size: settings.pointerSize, tapping: state.isTapping,
-                          impact: state.impact, shadow: settings.shadowEnabled, reduceMotion: reduceMotion)
+                          impact: state.impact, shadow: settings.shadowEnabled, reduceMotion: reduceMotion, lean: state.lean,
+                          idleTime: state.idleTime, availableTopRoom: state.position.y)
                 .position(state.position)
         }
         .ignoresSafeArea()
