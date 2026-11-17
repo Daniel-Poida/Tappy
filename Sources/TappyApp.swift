@@ -57,13 +57,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func showPreferences() {
         if prefsWindow == nil {
-            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 320, height: 280),
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 420, height: 340),
                                   styleMask: [.titled, .closable],
                                   backing: .buffered,
                                   defer: false)
             window.title = "Tappy Preferences"
             window.center()
-            window.contentView = NSHostingView(rootView: PreferencesView())
+            let hostingView = NSHostingView(rootView: PreferencesView())
+            hostingView.frame = window.contentView?.bounds ?? NSRect(x: 0, y: 0, width: 420, height: 340)
+            hostingView.autoresizingMask = [.width, .height]
+            window.contentView = hostingView
             prefsWindow = window
         }
         prefsWindow?.makeKeyAndOrderFront(nil)
@@ -81,41 +84,37 @@ struct PreferencesView: View {
 
     var body: some View {
         Form {
-            Section {
-                Picker("Pointer style", selection: $settings.pointerStyle) {
-                    ForEach(PointerStyle.allCases) { style in
-                        Text(style.rawValue).tag(style)
-                    }
-                }
-                .pickerStyle(SegmentedPickerStyle())
-            }
-
-            Section {
-                VStack(alignment: .leading) {
-                    Text("Pointer mood")
-                    HStack {
-                        Text("Shy finger")
-                        Slider(value: $settings.mood, in: 0...1)
-                        Text("In your face")
-                    }
+            Picker("Pointer style:", selection: $settings.pointerStyle) {
+                ForEach(PointerStyle.allCases) { style in
+                    Text(style.rawValue).tag(style)
                 }
             }
+            .pickerStyle(SegmentedPickerStyle())
 
-            Section {
-                Toggle("Animate on click", isOn: $settings.animateOnClick)
-                Toggle("Play knock sound", isOn: $settings.soundEnabled)
-            }
-
-            Section {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Pointer mood")
                 HStack {
-                    Text("Toggle hotkey")
-                    Spacer()
-                    Text("⌃⌥P")
-                        .foregroundColor(.secondary)
+                    Text("Shy finger")
+                        .font(.caption)
+                    Slider(value: $settings.mood, in: 0...1)
+                    Text("In your face")
+                        .font(.caption)
                 }
+            }
+
+            Toggle("Animate on click", isOn: $settings.animateOnClick)
+            Toggle("Play knock sound", isOn: $settings.soundEnabled)
+
+            HStack {
+                Text("Toggle hotkey")
+                Spacer()
+                Text("⌃⌥P")
+                    .foregroundColor(.secondary)
             }
         }
+        .formStyle(.grouped)
         .padding()
-        .frame(width: 320, height: 280)
+        .frame(minWidth: 380, idealWidth: 420, maxWidth: .infinity,
+               minHeight: 280, idealHeight: 340, maxHeight: .infinity)
     }
 }

@@ -20,19 +20,24 @@ class CursorOverlayWindow: NSWindow {
 
         CursorOverlayWindow.sharedInstance = self
 
-        level = .screenSaver
+        level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.cursorWindow)))
         backgroundColor = .clear
         isOpaque = false
         hasShadow = false
         ignoresMouseEvents = true
         collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
 
-        contentView = NSHostingView(rootView: cursorView)
+        let hostingView = NSHostingView(rootView: cursorView)
+        hostingView.frame = frame
+        hostingView.autoresizingMask = [.width, .height]
+        contentView = hostingView
     }
 
     func toggle() {
         isActive.toggle()
         if isActive {
+            setFrame(NSScreen.main?.frame ?? NSRect(x: 0, y: 0, width: 1920, height: 1080), display: true)
+            makeKeyAndOrderFront(nil)
             orderFrontRegardless()
             startTracking()
             hideSystemCursor()
@@ -76,7 +81,12 @@ class CursorOverlayWindow: NSWindow {
                 CursorOverlayWindow.handleEvent(proxy: proxy, type: type, event: event)
             },
             userInfo: nil
-        ) else { return }
+        ) else {
+            DispatchQueue.main.async {
+                self.showPermissionsAlert()
+            }
+            return
+        }
 
         eventTap = tap
         runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
@@ -94,6 +104,18 @@ class CursorOverlayWindow: NSWindow {
         if let source = runLoopSource {
             CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
             runLoopSource = nil
+        }
+    }
+
+    private func showPermissionsAlert() {
+        let alert = NSAlert()
+        alert.messageText = "Tappy needs Accessibility access"
+        alert.informativeText = "To track your cursor and clicks across the screen, Tappy needs Accessibility permissions. Please enable it in System Settings → Privacy & Security → Accessibility."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Open System Settings")
+        alert.addButton(withTitle: "Cancel")
+        if alert.runModal() == .alertFirstButtonReturn {
+            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
         }
     }
 

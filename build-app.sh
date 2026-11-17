@@ -18,6 +18,11 @@ mkdir -p "$APP_PATH/Contents/Resources"
 cp "$(pwd)/.build/release/$APP_NAME" "$APP_PATH/Contents/MacOS/$APP_NAME"
 chmod +x "$APP_PATH/Contents/MacOS/$APP_NAME"
 
+# Copy icon
+if [ -f "Assets/$APP_NAME.icns" ]; then
+    cp "Assets/$APP_NAME.icns" "$APP_PATH/Contents/Resources/$APP_NAME.icns"
+fi
+
 # Write Info.plist
 cat > "$APP_PATH/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -40,6 +45,8 @@ cat > "$APP_PATH/Contents/Info.plist" <<EOF
     <true/>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>CFBundleIconFile</key>
+    <string>$APP_NAME</string>
 </dict>
 </plist>
 EOF
