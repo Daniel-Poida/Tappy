@@ -1,6 +1,6 @@
 # Tappy
 
-A minimal macOS cursor highlighter inspired by [Pokey](https://pokeyapp.com/).
+A minimal macOS cursor highlighter.
 
 Turns your cursor into a big pointing hand that taps on every click, with a knock sound and a burst effect. The faster you click, the wilder the tap.
 
