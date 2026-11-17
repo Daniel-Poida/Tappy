@@ -11,7 +11,7 @@ class SoundManager {
     }
 
     func playKnock() {
-        guard PokeySettings.shared.soundEnabled else { return }
+        guard TappySettings.shared.soundEnabled else { return }
         guard let url = soundURL else { return }
 
         var soundID: SystemSoundID = 0

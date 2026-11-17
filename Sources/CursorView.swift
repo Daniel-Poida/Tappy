@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct CursorView: View {
-    @StateObject private var settings = PokeySettings.shared
+    @StateObject private var settings = TappySettings.shared
     @State private var position: CGPoint = .zero
     @State private var isTapping: Bool = false
     @State private var burstTrigger: Int = 0

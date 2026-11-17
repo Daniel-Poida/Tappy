@@ -1,8 +1,8 @@
 import Foundation
 import Combine
 
-final class PokeySettings: ObservableObject {
-    static let shared = PokeySettings()
+final class TappySettings: ObservableObject {
+    static let shared = TappySettings()
 
     @Published var mood: Double = 0.5
     @Published var animateOnClick: Bool = true

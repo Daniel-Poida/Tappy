@@ -77,7 +77,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 struct PreferencesView: View {
-    @StateObject private var settings = PokeySettings.shared
+    @StateObject private var settings = TappySettings.shared
 
     var body: some View {
         Form {
