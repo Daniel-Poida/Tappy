@@ -57,3 +57,9 @@ Final prompt specifications:
 - Each Object layer: remove the entire glove, cuff and wrist; retain the original wand alone in its exact original canvas alignment and restore the handle portions previously hidden by the fingers. Preserve the original bottom ornament, style and transparency.
 
 Idle animation is assembled in code from these independent layers. The prop follows a timed toss and one revolution before the glove catches it. The classic glove crossfades its pointing, wave and fist poses.
+
+## Version 1.3.3 wrist join
+
+Source PNGs retain their original pixels. Rendering preserves each curved cuff while cutting the painted wrist out from its opening (`PointerGeometry.wristRim` and `gloveClip`). The procedural forearm starts two local points inside that opening. A single `PointerFigure` Canvas draws the forearm and glove using one animated phase and transform, then applies one shadow to the combined silhouette. Bitmaps are decoded once and drawn synchronously through CoreGraphics in the same Canvas pass as the arm. This keeps the joint continuous during click compression, spring overshoot and idle gestures. Catching hands are aligned to the selected character's cuff.
+
+`Tappy-1.3.3-tap-preview.png` shows enlarged rendered tap and rebound frames on light and dark backgrounds.

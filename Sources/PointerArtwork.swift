@@ -12,7 +12,33 @@ enum PointerGeometry {
         }
     }
     static func wrist(_ style: PointerStyle) -> CGPoint {
-        CGPoint(x: style == .classic ? 49.5 : style == .wizardWand ? 48.5 : 50, y: 128)
+        CGPoint(x: style == .classic ? 49.5 : style == .wizardWand ? 48.5 : 50, y: wristRim(style) - 2)
+    }
+    /// Clip at the cuff, before the straight wrist painted into each source PNG.
+    static func cuffBottom(_ style: PointerStyle) -> CGFloat {
+        switch style {
+        case .classic: return 123.5
+        case .moonWand: return 128
+        case .starWand, .wizardWand: return 127.5
+        }
+    }
+    static func wristRim(_ style: PointerStyle) -> CGFloat {
+        switch style {
+        case .classic: return 117.5
+        case .moonWand: return 127
+        case .starWand: return 126.3
+        case .wizardWand: return 126.8
+        }
+    }
+    static func gloveClip(_ style: PointerStyle) -> Path {
+        let center = wrist(style).x
+        let half = (wristWidth(style) + 3) / 2
+        // Cut out the painted wrist from its opening, retaining the curved cuff
+        // on both sides. A flat bottom crop leaves a rigid black neck attached.
+        var path = Path(CGRect(x: -20, y: -100, width: 140, height: 100 + wristRim(style)))
+        path.addRect(CGRect(x: -20, y: wristRim(style), width: center - half + 20, height: cuffBottom(style) - wristRim(style)))
+        path.addRect(CGRect(x: center + half, y: wristRim(style), width: 120 - center - half, height: cuffBottom(style) - wristRim(style)))
+        return path
     }
     static func wristWidth(_ style: PointerStyle) -> CGFloat { style == .classic ? 15.8 : style == .wizardWand ? 12.5 : 10.2 }
     static func star(center: CGPoint, radius: CGFloat, points: Int = 5) -> Path {
@@ -78,6 +104,32 @@ enum PointerImages {
         }
         return result
     }()
+    static let bitmaps = images.compactMapValues(PointerBitmap.decode)
+}
+
+/// Decode once on the CPU. Drawing a SwiftUI Image from a lazy NSImage during
+/// rapid animation can defer the bitmap while its vector forearm is already ready.
+enum PointerBitmap {
+    static func decode(_ image: NSImage) -> CGImage? {
+        guard let source = image.cgImage(forProposedRect: nil, context: nil, hints: nil),
+              let context = CGContext(data: nil, width: source.width, height: source.height,
+                  bitsPerComponent: 8, bytesPerRow: source.width * 4,
+                  space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        context.draw(source, in: CGRect(x: 0, y: 0, width: source.width, height: source.height))
+        return context.makeImage()
+    }
+    static func draw(_ image: CGImage, in context: inout GraphicsContext, opacity: Double = 1, clip: Path? = nil) {
+        context.withCGContext { cg in
+            cg.saveGState()
+            if let clip { cg.addPath(clip.cgPath); cg.clip() }
+            cg.setAlpha(opacity)
+            cg.interpolationQuality = .high
+            cg.translateBy(x: -20, y: 140)
+            cg.scaleBy(x: 140 / CGFloat(image.width), y: -140 / CGFloat(image.height))
+            cg.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+            cg.restoreGState()
+        }
+    }
 }
 
 struct PointerPose {
@@ -93,13 +145,15 @@ struct PointerPose {
     func scaleX(at progress: Double) -> Double { 1 + progress * (0.03 + impact * 0.20) }
     func scaleY(at progress: Double) -> Double { 1 - progress * (0.09 + impact * 0.22) }
     func angle(at progress: Double) -> Double { reduceMotion ? 0 : lean + progress * (14 + impact * 15) }
-    func offset(of point: CGPoint, progress: Double? = nil) -> CGPoint {
-        let progress = progress ?? (tapping ? 1 : 0)
+    func transform(position: CGPoint = .zero, progress: Double) -> CGAffineTransform {
         let tip = PointerGeometry.tip(style)
-        let x = (point.x - tip.x) * size * scaleX(at: progress)
-        let y = (point.y - tip.y) * size * scaleY(at: progress)
-        let radians = angle(at: progress) * .pi / 180
-        return CGPoint(x: x * Darwin.cos(radians) - y * Darwin.sin(radians), y: x * Darwin.sin(radians) + y * Darwin.cos(radians))
+        return CGAffineTransform(translationX: position.x, y: position.y)
+            .rotated(by: angle(at: progress) * .pi / 180)
+            .scaledBy(x: size * scaleX(at: progress), y: size * scaleY(at: progress))
+            .translatedBy(x: -tip.x, y: -tip.y)
+    }
+    func offset(of point: CGPoint, progress: Double? = nil) -> CGPoint {
+        point.applying(transform(progress: progress ?? (tapping ? 1 : 0)))
     }
 }
 
@@ -107,45 +161,16 @@ struct PointerArtwork: View {
     var style: PointerStyle = .classic
     var shadow = true
     var lifted = false
+    static func draw(_ image: CGImage, style: PointerStyle, in context: inout GraphicsContext, opacity: Double = 1) {
+        PointerBitmap.draw(image, in: &context, opacity: opacity, clip: PointerGeometry.gloveClip(style))
+    }
     var body: some View {
         Canvas { context, size in
-            guard let image = PointerImages.images[style] else { return }
+            guard let image = PointerImages.bitmaps[style] else { return }
             context.scaleBy(x: size.width / 100, y: size.height / 140)
             if shadow { context.addFilter(.shadow(color: .black.opacity(lifted ? 0.30 : 0.23), radius: lifted ? 4 : 2, x: 3, y: lifted ? 7 : 3)) }
-            context.drawLayer { layer in
-                // Trim the rounded wrist cap so the live forearm joins the glove seamlessly.
-                layer.clip(to: Path(CGRect(x: -20, y: 0, width: 140, height: 130)))
-                layer.draw(Image(nsImage: image), in: CGRect(x: -20, y: 0, width: 140, height: 140))
-            }
+            Self.draw(image, style: style, in: &context)
         }.accessibilityHidden(true)
-    }
-}
-
-struct PointerSprite: View {
-    let style: PointerStyle
-    var size: Double = 1
-    var tapping = false
-    var impact: Double = 0
-    var shadow = true
-    var reduceMotion = false
-    var lean: Double = -10
-    var idleTime: Double?
-    var availableTopRoom: Double = 100
-    var body: some View {
-        let tip = PointerGeometry.tip(style)
-        let anchor = UnitPoint(x: tip.x / 100, y: tip.y / 140)
-        let pose = PointerPose(style: style, size: size, tapping: tapping, impact: impact, reduceMotion: reduceMotion, lean: lean)
-        Group {
-            if let idleTime, !reduceMotion {
-                IdlePointerArtwork(style: style, time: idleTime, shadow: shadow, availableTopRoom: availableTopRoom)
-            } else {
-                PointerArtwork(style: style, shadow: shadow, lifted: !tapping)
-            }
-        }
-            .frame(width: 100 * size, height: 140 * size)
-            .scaleEffect(x: pose.scaleX, y: pose.scaleY, anchor: anchor)
-            .rotationEffect(.degrees(pose.angle), anchor: anchor)
-            .offset(x: (50 - tip.x) * size, y: (70 - tip.y) * size)
     }
 }
 
@@ -156,7 +181,7 @@ struct ForearmGeometry {
     let path: Path
     init(position: CGPoint, pose: PointerPose, progress: Double, length: Double = 190) {
         let wrist = PointerGeometry.wrist(pose.style)
-        let offset = pose.offset(of: CGPoint(x: wrist.x, y: wrist.y - 3), progress: progress)
+        let offset = pose.offset(of: wrist, progress: progress)
         start = CGPoint(x: position.x + offset.x, y: position.y + offset.y)
         let angle = pose.angle(at: progress) * .pi / 180
         let baseAngle = (pose.reduceMotion ? 0 : pose.lean * 0.65) * .pi / 180
@@ -194,8 +219,9 @@ struct ForearmGeometry {
     }
 }
 
-/// The glove, outline and shadow all fade together along the lower forearm.
-struct PointerArm: View, Animatable {
+/// A single animated phase and Canvas transform drive both halves of the wrist.
+/// Rendering together also applies the shadow to the joined silhouette only.
+struct PointerFigure: View, Animatable {
     var position: CGPoint
     var style: PointerStyle
     var size: Double = 1
@@ -207,27 +233,35 @@ struct PointerArm: View, Animatable {
     var lowerOpacity: Double = 0.2
     var extensionFraction: Double = 0
     var extensionLength: Double = 190
-    var phase: Double = -1
+    var idleTime: Double?
+    var availableTopRoom: Double = 100
+    var phase: Double?
     var animatableData: Double {
-        get { phase < 0 ? (tapping ? 1 : 0) : phase }
+        get { phase ?? (tapping ? 1 : 0) }
         set { phase = newValue }
     }
     var body: some View {
-        let progress = phase < 0 ? (tapping ? 1.0 : 0.0) : phase
+        let progress = phase ?? (tapping ? 1.0 : 0.0)
         Canvas { context, canvas in
             let pose = PointerPose(style: style, size: size, tapping: tapping, impact: impact, reduceMotion: reduceMotion, lean: lean)
-            let wrist = PointerGeometry.wrist(style)
-            let wristOffset = pose.offset(of: CGPoint(x: wrist.x, y: wrist.y - 3), progress: progress)
+            let wristOffset = pose.offset(of: PointerGeometry.wrist(style), progress: progress)
             let length = ForearmGeometry.resolvedLength(extensionFraction: extensionFraction, canvasHeight: canvas.height,
                 wristY: position.y + wristOffset.y, size: size, lean: reduceMotion ? 0 : lean)
             let arm = ForearmGeometry(position: position, pose: pose, progress: progress, length: max(extensionLength, length))
             let fractions = [0.0, 0.08, 0.16, 0.22, 0.68, 0.78, 0.9, 1.0]
             let fill = Gradient(stops: fractions.map { .init(color: Color.black.opacity(ForearmGeometry.opacity(at: $0, lowerOpacity: lowerOpacity)), location: $0) })
             let stroke = Gradient(stops: fractions.map { .init(color: Color.white.opacity(0.85 * ForearmGeometry.opacity(at: $0, lowerOpacity: lowerOpacity)), location: $0) })
-            if shadow { context.addFilter(.shadow(color: .black.opacity(0.18), radius: 3, x: 3, y: 5)) }
+            if shadow { context.addFilter(.shadow(color: .black.opacity(0.23), radius: 3 * size, x: 3 * size, y: 5 * size)) }
             context.drawLayer { layer in
-                layer.stroke(arm.path, with: .linearGradient(stroke, startPoint: arm.start, endPoint: arm.end), lineWidth: 2.5)
+                layer.stroke(arm.path, with: .linearGradient(stroke, startPoint: arm.start, endPoint: arm.end), lineWidth: 2.5 * size)
                 layer.fill(arm.path, with: .linearGradient(fill, startPoint: arm.start, endPoint: arm.end))
+                layer.concatenate(pose.transform(position: position, progress: progress))
+                if let idleTime, !reduceMotion {
+                    IdlePointerArtwork.draw(style: style, time: idleTime, in: &layer,
+                        availableTopRoom: availableTopRoom / max(0.1, size))
+                } else if let image = PointerImages.bitmaps[style] {
+                    PointerArtwork.draw(image, style: style, in: &layer)
+                }
             }
         }.allowsHitTesting(false).accessibilityHidden(true)
     }

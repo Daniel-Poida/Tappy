@@ -1,10 +1,11 @@
 import Foundation
 import AVFoundation
 import Cocoa
+import SwiftUI
 
 // Standalone checks run with the macOS Command Line Tools, without requiring Xcode/XCTest.
 @main struct TappyChecks {
-    static func main() throws {
+    @MainActor static func main() throws {
         var checks = 0
         func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
             guard condition() else { fatalError("FAIL: \(message)") }; checks += 1
@@ -57,7 +58,7 @@ import Cocoa
                 for impact in [0.0, 0.5, 1.0] {
                     for tapping in [false, true] {
                         let pose = PointerPose(style: style, size: size, tapping: tapping, impact: impact)
-                        expect(pose.offset(of: PointerGeometry.tip(style)) == .zero, "Animation keeps the click hotspot fixed")
+                        expect(hypot(pose.offset(of: PointerGeometry.tip(style)).x, pose.offset(of: PointerGeometry.tip(style)).y) < 1e-9, "Animation keeps the click hotspot fixed")
                     }
                 }
             }
@@ -81,10 +82,56 @@ import Cocoa
                         let geometry = ForearmGeometry(position: CGPoint(x: 100, y: 20), pose: pose, progress: phase)
                         expect(abs(hypot(geometry.end.x - geometry.start.x, geometry.end.y - geometry.start.y) - 190 * size) < 0.001, "Forearm length stays finite at every angle and click phase")
                         let wrist = PointerGeometry.wrist(style)
-                        let offset = pose.offset(of: CGPoint(x: wrist.x, y: wrist.y - 3), progress: phase)
+                        let offset = pose.offset(of: wrist, progress: phase)
                         expect(hypot(geometry.start.x - 100 - offset.x, geometry.start.y - 20 - offset.y) < 0.001, "Wrist and forearm share exactly the same animated transform")
-                        expect(pose.offset(of: PointerGeometry.tip(style), progress: phase) == .zero, "Continuous animation keeps click hotspot fixed")
+                        expect(hypot(pose.offset(of: PointerGeometry.tip(style), progress: phase).x, pose.offset(of: PointerGeometry.tip(style), progress: phase).y) < 1e-9, "Continuous animation keeps click hotspot fixed")
                     }
+                }
+            }
+        }
+        // Render the actual production Canvas at intermediate and spring rebound
+        // phases: a geometric endpoint check alone missed the old split animation.
+        _ = NSApplication.shared
+        for style in PointerStyle.allCases {
+            let artwork = ImageRenderer(content: PointerArtwork(style: style, shadow: false).frame(width: 200, height: 280))
+            let glove = NSBitmapImageRep(cgImage: artwork.cgImage!)
+            for y in Int(ceil(PointerGeometry.wristRim(style) * 2)) + 1..<280 {
+                expect(glove.colorAt(x: Int(PointerGeometry.wrist(style).x * 2), y: y)!.alphaComponent < 0.01,
+                       "Baked straight wrist is clipped from the rendered glove")
+            }
+            for lean in [-34.0, 0, 34] {
+                for phase in [-0.15, 0, 0.25, 0.5, 0.75, 1.0, 1.1] {
+                    let position = CGPoint(x: 330, y: 25)
+                    let figure = ImageRenderer(content: PointerFigure(position: position, style: style, size: 2,
+                        impact: 1, shadow: false, lean: lean, lowerOpacity: 1, phase: phase).frame(width: 650, height: 600))
+                    let bitmap = NSBitmapImageRep(cgImage: figure.cgImage!)
+                    let pose = PointerPose(style: style, size: 2, impact: 1, lean: lean)
+                    let transform = pose.transform(position: position, progress: phase)
+                    for localY in stride(from: PointerGeometry.wristRim(style) - 1, through: PointerGeometry.cuffBottom(style) + 8, by: 0.5) {
+                        let point = CGPoint(x: PointerGeometry.wrist(style).x, y: localY).applying(transform)
+                        expect(bitmap.colorAt(x: Int(point.x.rounded()), y: Int(point.y.rounded()))!.alphaComponent > 0.95,
+                               "No transparent gap across cuff during tap or spring rebound: \(style), \(phase), \(lean), \(localY)")
+                    }
+                }
+            }
+        }
+        for style in PointerStyle.allCases {
+            expect(PointerImages.bitmaps[style] != nil, "Every glove has a predecoded bitmap")
+            // Consecutive fast-click frames, with changing energy and direction.
+            // Check both the bitmap palm and its connected wrist on every frame.
+            for frame in 0..<36 {
+                let phase = sin(Double(frame) * 0.8) * 0.65 + 0.45
+                let lean = sin(Double(frame) * 0.3) * 34
+                let impact = Double(frame % 9) / 8
+                let position = CGPoint(x: 270, y: 25)
+                let renderer = ImageRenderer(content: PointerFigure(position: position, style: style, size: 1.6,
+                    impact: impact, shadow: false, lean: lean, lowerOpacity: 1, phase: phase).frame(width: 550, height: 500))
+                let bitmap = NSBitmapImageRep(cgImage: renderer.cgImage!)
+                let transform = PointerPose(style: style, size: 1.6, impact: impact, lean: lean).transform(position: position, progress: phase)
+                for local in [CGPoint(x: 50, y: 100), CGPoint(x: PointerGeometry.wrist(style).x, y: PointerGeometry.wristRim(style) + 1)] {
+                    let point = local.applying(transform)
+                    expect(bitmap.colorAt(x: Int(point.x.rounded()), y: Int(point.y.rounded()))!.alphaComponent > 0.95,
+                           "Bitmap glove and forearm are present together in rapid-click frames")
                 }
             }
         }

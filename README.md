@@ -1,6 +1,6 @@
-# Tappy 1.3.2
+# Tappy 1.3.3
 
-[Download Tappy 1.3.2 for macOS](https://github.com/Daniel-Poida/Tappy/releases/download/v1.3.2/Tappy-1.3.2.dmg) · [Release notes](https://github.com/Daniel-Poida/Tappy/releases/tag/v1.3.2)
+[Download Tappy 1.3.3 for macOS](https://github.com/Daniel-Poida/Tappy/releases/download/v1.3.3/Tappy-1.3.3.dmg) · [Release notes](https://github.com/Daniel-Poida/Tappy/releases/tag/v1.3.3)
 
 A playful macOS pointer for presentations, demos and screen shares. Four cartoon gloves, each with exactly four fingers, its own sound and a readable dark contour with a narrow white keyline.
 
@@ -15,19 +15,22 @@ A playful macOS pointer for presentations, demos and screen shares. Four cartoon
 
 | Light appearance | Dark appearance |
 | --- | --- |
-| ![Tappy 1.3.2 settings in light appearance](Assets/Tappy-1.3.2-settings-light.png) | ![Tappy 1.3.2 settings in dark appearance](Assets/Tappy-1.3.2-settings-dark.png) |
+| ![Tappy 1.3.3 settings in light appearance](Assets/Tappy-1.3.3-settings-light.png) | ![Tappy 1.3.3 settings in dark appearance](Assets/Tappy-1.3.3-settings-dark.png) |
 
-![The four Tappy characters on light and dark backgrounds](Assets/Tappy-1.3.2-preview.png)
+![The four Tappy characters on light and dark backgrounds](Assets/Tappy-1.3.3-preview.png)
 
 <details>
 <summary>Idle animation frames: finger play and quick wand tosses</summary>
 
-![Idle finger poses and independent wand toss frames](Assets/Tappy-1.3.2-idle-preview.png)
+![Idle finger poses and independent wand toss frames](Assets/Tappy-1.3.3-idle-preview.png)
+
+![Wrist continuity during click compression and spring rebound](Assets/Tappy-1.3.3-tap-preview.png)
 
 </details>
 
-## What's new in 1.3.2
+## What's new in 1.3.3
 
+- Fixed the gap between the glove and forearm during clicks. Both now render together with one animated transform, including spring rebound. The painted straight wrist is cut out from its opening while the curved cuff is preserved. Predecoded bitmaps draw synchronously with the arm during rapid clicks.
 - Fixed the system cursor reappearing above Tappy after switching applications, Spaces or displays. Cursor hide/show requests stay balanced and are restored on disable and quit.
 
 - Corrected finger anatomy on the wand gloves: one thumb and three curled fingers. Decorative stripes remain only on the back of the classic glove, not on the palms holding objects.
@@ -65,7 +68,7 @@ Build a universal Apple Silicon + Intel application, regenerate icons, and creat
 ./build-dmg.sh
 ```
 
-Outputs `build/Tappy.app`, `build/Tappy-1.3.2.dmg` and its SHA-256 checksum. The local bundle and DMG are ad-hoc signed; distribution with Apple notarization requires a Developer ID certificate.
+Outputs `build/Tappy.app`, `build/Tappy-1.3.3.dmg` and its SHA-256 checksum. The local bundle and DMG are ad-hoc signed; distribution with Apple notarization requires a Developer ID certificate.
 
 Checks cover click energy and decay, volume scaling, playable and unclipped distinct sounds, artwork loading, fixed click hotspots at all animation phases, short-to-full-screen forearm length, opacity falloff, motion damping, presentation mouse handling, idle timing and interruption, animation layer loading and multi-display coordinates.
 

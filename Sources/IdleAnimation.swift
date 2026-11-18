@@ -79,51 +79,35 @@ enum IdleImages {
         }
         return result
     }()
+    static let bitmaps = images.compactMapValues(PointerBitmap.decode)
 }
 
-struct IdlePointerArtwork: View {
-    let style: PointerStyle
-    let time: Double
-    var shadow = true
-    var availableTopRoom: Double = 100
-    var body: some View {
+enum IdlePointerArtwork {
+    static func draw(style: PointerStyle, time: Double, in context: inout GraphicsContext, availableTopRoom: Double) {
         let pose = IdlePose(time: time)
-        GeometryReader { bounds in
-        Canvas { context, _ in
-            context.translateBy(x: 150, y: 150)
-            context.scaleBy(x: bounds.size.width / 100, y: bounds.size.height / 140)
-            if shadow { context.addFilter(.shadow(color: .black.opacity(0.25), radius: 3, x: 3, y: 5)) }
-            func draw(_ image: NSImage, in target: inout GraphicsContext, opacity: Double = 1) {
-                target.drawLayer { layer in
-                    layer.opacity = opacity
-                    layer.clip(to: Path(CGRect(x: -20, y: -100, width: 140, height: 230)))
-                    layer.draw(Image(nsImage: image), in: CGRect(x: -20, y: 0, width: 140, height: 140))
+        guard let normal = PointerImages.bitmaps[style] else { return }
+        if style == .classic {
+            let weights = pose.fidgetWeights
+            PointerArtwork.draw(normal, style: style, in: &context, opacity: weights[0])
+            if let wave = IdleImages.bitmaps["ClassicWave"] { PointerArtwork.draw(wave, style: style, in: &context, opacity: weights[1]) }
+            if let fist = IdleImages.bitmaps["ClassicFist"] { PointerArtwork.draw(fist, style: style, in: &context, opacity: weights[2]) }
+        } else {
+            let mix = pose.handMix
+            PointerArtwork.draw(normal, style: style, in: &context, opacity: 1 - mix)
+            if mix > 0, let hand = IdleImages.bitmaps["Catch"],
+               let object = IdleImages.bitmaps[PointerImages.filename(style) + "Object"] {
+                context.drawLayer { layer in
+                    layer.opacity = mix
+                    let lift = min(pose.lift, max(0, availableTopRoom - 10))
+                    var flying = layer
+                    flying.translateBy(x: 50, y: 65 - lift)
+                    flying.rotate(by: .degrees(pose.rotation))
+                    flying.translateBy(x: -50, y: -65)
+                    PointerBitmap.draw(object, in: &flying)
+                    layer.translateBy(x: PointerGeometry.wrist(style).x - 48.5, y: PointerGeometry.cuffBottom(style) - 127.5)
+                    PointerArtwork.draw(hand, style: .wizardWand, in: &layer)
                 }
             }
-            guard let normal = PointerImages.images[style] else { return }
-            if style == .classic {
-                let weights = pose.fidgetWeights
-                draw(normal, in: &context, opacity: weights[0])
-                if let wave = IdleImages.images["ClassicWave"] { draw(wave, in: &context, opacity: weights[1]) }
-                if let fist = IdleImages.images["ClassicFist"] { draw(fist, in: &context, opacity: weights[2]) }
-            } else {
-                let mix = pose.handMix
-                draw(normal, in: &context, opacity: 1 - mix)
-                if mix > 0, let hand = IdleImages.images["Catch"],
-                   let object = IdleImages.images[PointerImages.filename(style) + "Object"] {
-                    context.drawLayer { layer in
-                        layer.opacity = mix
-                        let lift = min(pose.lift, max(0, availableTopRoom / max(0.1, bounds.size.height / 140) - 10))
-                        var flying = layer
-                        flying.translateBy(x: 50, y: 65 - lift)
-                        flying.rotate(by: .degrees(pose.rotation))
-                        flying.translateBy(x: -50, y: -65)
-                        flying.draw(Image(nsImage: object), in: CGRect(x: -20, y: 0, width: 140, height: 140))
-                        draw(hand, in: &layer)
-                    }
-                }
-            }
-        }.frame(width: bounds.size.width + 300, height: bounds.size.height + 300).offset(x: -150, y: -150)
-        }.accessibilityHidden(true)
+        }
     }
 }

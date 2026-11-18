@@ -147,10 +147,12 @@ struct PreferencesView: View {
                         }
                     }.fill(Color.gray.opacity(0.25))
                 }
-                PointerArm(position: CGPoint(x: 137, y: 55), style: settings.pointerStyle,
-                           size: min(1.3, settings.pointerSize * 1.1), tapping: preview.isTapping, impact: preview.impact,
-                           shadow: settings.shadowEnabled, reduceMotion: reduceMotion, lean: preview.lean,
-                           lowerOpacity: settings.armOpacity, extensionFraction: settings.armExtension)
+                TapBurst(impact: preview.impact, visible: preview.burstVisible, style: settings.pointerStyle).position(x: 137, y: 55)
+                PointerFigure(position: CGPoint(x: 137, y: 55), style: settings.pointerStyle,
+                              size: min(1.3, settings.pointerSize * 1.1), tapping: preview.isTapping,
+                              impact: preview.impact, shadow: settings.shadowEnabled, reduceMotion: reduceMotion, lean: preview.lean,
+                              lowerOpacity: settings.armOpacity, extensionFraction: settings.armExtension,
+                              idleTime: preview.idleTime, availableTopRoom: 55)
                 VStack {
                     HStack {
                         if background != "Dark" { Text("LIGHT").foregroundStyle(Color.black.opacity(0.45)) }
@@ -162,10 +164,7 @@ struct PreferencesView: View {
                         .font(.system(size: 10, weight: .medium)).padding(.horizontal, 11).padding(.vertical, 7)
                         .background(.regularMaterial, in: Capsule())
                 }.padding(16)
-                TapBurst(impact: preview.impact, visible: preview.burstVisible, style: settings.pointerStyle).position(x: 137, y: 55)
-                PointerSprite(style: settings.pointerStyle, size: min(1.3, settings.pointerSize * 1.1), tapping: preview.isTapping,
-                              impact: preview.impact, shadow: settings.shadowEnabled, reduceMotion: reduceMotion, lean: preview.lean,
-                              idleTime: preview.idleTime, availableTopRoom: 55).position(x: 137, y: 55)
+
             }.frame(width: 290, height: 275).clipShape(RoundedRectangle(cornerRadius: 19))
                 .overlay(RoundedRectangle(cornerRadius: 19).stroke(ink.opacity(0.12)))
         }.buttonStyle(.plain).accessibilityLabel("Test pointer. Click repeatedly to increase energy.")

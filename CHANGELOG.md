@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.3
+
+- Render glove and forearm in one Canvas using the same animated phase and transform, removing the gap during clicks and spring rebound.
+- Trim each sprite at the cuff and start the procedural arm inside it; remove the mismatched straight wrist segment from pointer rendering.
+- Decode sprites once and draw them synchronously through CoreGraphics; remove the painted wrist from its opening while retaining the curved cuff.
+- Apply the shadow to the joined silhouette. Align idle catching hands with the same cuff attachment.
+- Verify actual rendered joint pixels through compression and overshoot, in addition to geometry checks.
+
 ## 1.3.2
 
 - Keep the system cursor hidden when Tappy is active in the background.

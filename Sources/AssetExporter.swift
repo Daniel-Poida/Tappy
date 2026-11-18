@@ -14,8 +14,7 @@ struct AppIconArtwork: View {
                     .fill(Color(red: 0.12, green: 0.24, blue: 0.23))
             }
             ZStack(alignment: .topLeading) {
-                PointerArm(position: CGPoint(x: 249, y: 81), style: .classic, size: 2.6, shadow: false, lowerOpacity: 1)
-                PointerSprite(style: .classic, size: 2.6).position(x: 249, y: 81)
+                PointerFigure(position: CGPoint(x: 249, y: 81), style: .classic, size: 2.6, shadow: false, lowerOpacity: 1)
             }.clipShape(RoundedRectangle(cornerRadius: 112, style: .continuous).inset(by: 20))
         }.frame(width: 512, height: 512)
     }
@@ -34,8 +33,7 @@ struct PointerContactSheet: View {
                     VStack(spacing: 14) {
                         ZStack {
                             HStack(spacing: 0) { Color(red: 0.91, green: 0.92, blue: 0.88); Color(red: 0.12, green: 0.16, blue: 0.19) }
-                            PointerArm(position: CGPoint(x: 96, y: 34), style: style, size: 1.15)
-                            PointerSprite(style: style, size: 1.15).position(x: 96, y: 34)
+                            PointerFigure(position: CGPoint(x: 96, y: 34), style: style, size: 1.15)
                         }.frame(width: 205, height: 244).clipShape(RoundedRectangle(cornerRadius: 20))
                         Text(style.title).font(.system(size: 16, weight: .bold))
                         Text(style.sound.rawValue).font(.system(size: 12)).foregroundStyle(.secondary)
@@ -56,9 +54,36 @@ struct IdleContactSheet: View {
                     ForEach(style == .classic ? [0.2, 0.8, 1.5, 2.35] : [0.1, 0.48, 0.7, 1.0], id: \.self) { time in
                         ZStack(alignment: .topLeading) {
                             Color(nsColor: .controlBackgroundColor)
-                            PointerArm(position: CGPoint(x: 82, y: 60), style: style, lowerOpacity: 0.2)
-                            PointerSprite(style: style, idleTime: time, availableTopRoom: 80).position(x: 82, y: 60)
+                            PointerFigure(position: CGPoint(x: 82, y: 60), style: style, lowerOpacity: 0.2,
+                                          idleTime: time, availableTopRoom: 80)
                         }.frame(width: 166, height: 250).clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                }
+            }
+        }.padding(24).background(Color(nsColor: .windowBackgroundColor)).environment(\.colorScheme, .light)
+    }
+}
+
+/// Enlarged frames make cuff continuity visible throughout compression and rebound.
+struct TapContactSheet: View {
+    var body: some View {
+        VStack(spacing: 12) {
+            Text("Tappy \(AppVersion.short) · wrist joint / tap and rebound").font(.system(size: 22, weight: .bold))
+            HStack {
+                Text("Phase").frame(width: 90)
+                ForEach([0.0, 0.5, 1.0, -0.15], id: \.self) { phase in
+                    Text(String(format: "%.2f", phase)).frame(width: 220)
+                }
+            }
+            ForEach(PointerStyle.allCases) { style in
+                HStack(spacing: 12) {
+                    Text(style.title).font(.system(size: 14, weight: .medium)).frame(width: 90)
+                    ForEach([0.0, 0.5, 1.0, -0.15], id: \.self) { phase in
+                        ZStack {
+                            HStack(spacing: 0) { Color(white: 0.94); Color(white: 0.13) }
+                            PointerFigure(position: CGPoint(x: 92, y: -65), style: style, size: 2.2,
+                                          impact: 1, lean: -24, lowerOpacity: 1, phase: phase)
+                        }.frame(width: 220, height: 300).clipped()
                     }
                 }
             }
@@ -91,6 +116,11 @@ struct IdleContactSheet: View {
         idleSheet.scale = 2
         if let cg = idleSheet.cgImage, let data = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]) {
             try data.write(to: root.appendingPathComponent("Tappy-\(AppVersion.short)-idle-preview.png"))
+        }
+        let tapSheet = ImageRenderer(content: TapContactSheet())
+        tapSheet.scale = 2
+        if let cg = tapSheet.cgImage, let data = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]) {
+            try data.write(to: root.appendingPathComponent("Tappy-\(AppVersion.short)-tap-preview.png"))
         }
         for style in TapSound.allCases {
             try SoundSynthesis.wav(style: style).write(to: root.appendingPathComponent(style.rawValue.replacingOccurrences(of: " ", with: "-").lowercased() + ".wav"))
