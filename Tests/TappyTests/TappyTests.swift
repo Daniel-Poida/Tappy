@@ -135,6 +135,48 @@ import SwiftUI
                 }
             }
         }
+        // Reuse the very same backing memory while moving, shrinking, changing
+        // characters and interrupting taps. Every frame must equal a fresh draw.
+        func frameContext() -> CGContext {
+            CGContext(data: nil, width: 460, height: 520, bitsPerComponent: 8, bytesPerRow: 460 * 4,
+                      space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        }
+        func pixels(_ context: CGContext) -> Data {
+            Data(bytes: context.data!, count: context.bytesPerRow * context.height)
+        }
+        let reused = frameContext()
+        for step in 0..<36 {
+            let style = PointerStyle.allCases[step % 4]
+            let frame = CursorOverlayFrame(figure: PointerFigure(position: CGPoint(x: 160 + step % 3 * 30, y: 20),
+                style: style, size: step % 2 == 0 ? 1.6 : 0.65, impact: 1,
+                shadow: step % 3 != 0, lean: step % 2 == 0 ? -28 : 30,
+                lowerOpacity: Double(step % 5) / 4, extensionFraction: step % 2 == 0 ? 1 : 0,
+                idleTime: step % 5 == 0 ? 0.7 : nil, phase: Double(step % 6) / 5), burstOpacity: step % 2 == 0 ? 1 : 0)
+            CursorOverlayFrame.draw(frame, in: reused, canvas: CGSize(width: 460, height: 520))
+            let fresh = frameContext()
+            CursorOverlayFrame.draw(frame, in: fresh, canvas: CGSize(width: 460, height: 520))
+            expect(pixels(reused) == pixels(fresh), "Changing settings never retains the previous cursor frame")
+        }
+        CursorOverlayFrame.draw(nil, in: reused, canvas: CGSize(width: 460, height: 520))
+        expect(pixels(reused).allSatisfy { $0 == 0 }, "Disabling clears every previous pointer pixel")
+        var motion = CursorTapMotion()
+        expect(motion.phase(at: 0) == 0 && motion.burstOpacity(at: 0) == 0, "Native cursor starts at rest")
+        motion.record(at: 1)
+        expect(motion.phase(at: 1) == 0 && abs(motion.phase(at: 1.05) - 1) < 0.001, "Tap compresses once from its current pose")
+        let interrupted = motion.phase(at: 1.1)
+        motion.record(at: 1.1)
+        expect(abs(motion.phase(at: 1.1) - interrupted) < 0.001, "Rapid click interruption preserves the current wrist phase")
+        expect(motion.phase(at: 3) == 0 && motion.burstOpacity(at: 3) == 0, "Motion settles and impact disappears")
+        motion.reset()
+        expect(motion.phase(at: 1) == 0, "Disabling cancels the native click animation")
+        let lockPath = FileManager.default.temporaryDirectory.appendingPathComponent("Tappy-instance-test-\(UUID().uuidString).lock")
+        let firstInstance = SingleInstance(path: lockPath.path), secondInstance = SingleInstance(path: lockPath.path)
+        expect(firstInstance.acquire() && firstInstance.acquire(), "First instance owns a stable lock")
+        expect(!secondInstance.acquire(), "Second process cannot own the cursor at the same time")
+        firstInstance.release()
+        expect(secondInstance.acquire(), "Lock is available after the original process exits")
+        secondInstance.release()
+        try FileManager.default.removeItem(at: lockPath)
         var orientation = PointerOrientation()
         for height in [720.0, 1080.0, 2160.0] {
             for size in [0.65, 1.0, 1.6] {

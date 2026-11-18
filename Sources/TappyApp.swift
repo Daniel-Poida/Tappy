@@ -4,10 +4,22 @@ import Combine
 
 @main @MainActor
 enum TappyMain {
+    private static let instance = SingleInstance()
     static func main() {
         if let index = CommandLine.arguments.firstIndex(of: "--export-assets"), CommandLine.arguments.count > index + 1 {
             do { try AssetExporter.export(to: CommandLine.arguments[index + 1]) }
             catch { fputs("Asset export failed: \(error)\n", stderr); exit(1) }
+            return
+        }
+        let current = NSRunningApplication.current
+        let identifier = Bundle.main.bundleIdentifier ?? "com.example.tappy"
+        let existing = NSRunningApplication.runningApplications(withBundleIdentifier: identifier).first { app in
+            guard app.processIdentifier != current.processIdentifier, !app.isTerminated else { return false }
+            let otherDate = app.launchDate ?? .distantPast, ownDate = current.launchDate ?? .distantFuture
+            return otherDate < ownDate || (otherDate == ownDate && app.processIdentifier < current.processIdentifier)
+        }
+        guard existing == nil, instance.acquire() else {
+            existing?.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
             return
         }
         TappyApp.main()
@@ -31,10 +43,13 @@ struct TappyApp: App {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        // Register defaults before menu observers can receive their notification.
+        // Accessing the lazy singleton from updateMenu during registration recurses.
+        let settings = TappySettings.shared
         overlay = CursorOverlayWindow()
         overlay.onChange = { [weak self] in self?.updateMenu() }
         setupMenuBar()
-        appearanceObserver = TappySettings.shared.$theme.removeDuplicates().sink { [weak self] theme in
+        appearanceObserver = settings.$theme.removeDuplicates().sink { [weak self] theme in
             NSApp.appearance = theme.appearance
             self?.prefsWindow?.appearance = theme.appearance
             self?.updateMenu()

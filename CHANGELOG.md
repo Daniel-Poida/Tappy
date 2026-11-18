@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.4
+
+- Draw the live cursor on one native AppKit surface and clear its complete transparent backing before every frame, preventing retained copies when size and other settings change.
+- Use explicit click motion on that surface; glove, arm and shadow are rendered from one current settings snapshot.
+- Allow only one active overlay per process and one running Tappy instance, including already running older versions.
+- Test repeated settings changes against a fresh framebuffer, rapid tap interruption, complete clearing, and instance lock ownership.
+
 ## 1.3.3
 
 - Render glove and forearm in one Canvas using the same animated phase and transform, removing the gap during clicks and spring rebound.

@@ -83,30 +83,33 @@ enum IdleImages {
 }
 
 enum IdlePointerArtwork {
-    static func draw(style: PointerStyle, time: Double, in context: inout GraphicsContext, availableTopRoom: Double) {
+    static func draw(style: PointerStyle, time: Double, in context: CGContext, availableTopRoom: Double) {
         let pose = IdlePose(time: time)
         guard let normal = PointerImages.bitmaps[style] else { return }
         if style == .classic {
             let weights = pose.fidgetWeights
-            PointerArtwork.draw(normal, style: style, in: &context, opacity: weights[0])
-            if let wave = IdleImages.bitmaps["ClassicWave"] { PointerArtwork.draw(wave, style: style, in: &context, opacity: weights[1]) }
-            if let fist = IdleImages.bitmaps["ClassicFist"] { PointerArtwork.draw(fist, style: style, in: &context, opacity: weights[2]) }
+            PointerBitmap.draw(normal, in: context, opacity: weights[0], clip: PointerGeometry.gloveClip(style))
+            if let wave = IdleImages.bitmaps["ClassicWave"] { PointerBitmap.draw(wave, in: context, opacity: weights[1], clip: PointerGeometry.gloveClip(style)) }
+            if let fist = IdleImages.bitmaps["ClassicFist"] { PointerBitmap.draw(fist, in: context, opacity: weights[2], clip: PointerGeometry.gloveClip(style)) }
         } else {
             let mix = pose.handMix
-            PointerArtwork.draw(normal, style: style, in: &context, opacity: 1 - mix)
+            PointerBitmap.draw(normal, in: context, opacity: 1 - mix, clip: PointerGeometry.gloveClip(style))
             if mix > 0, let hand = IdleImages.bitmaps["Catch"],
                let object = IdleImages.bitmaps[PointerImages.filename(style) + "Object"] {
-                context.drawLayer { layer in
-                    layer.opacity = mix
-                    let lift = min(pose.lift, max(0, availableTopRoom - 10))
-                    var flying = layer
-                    flying.translateBy(x: 50, y: 65 - lift)
-                    flying.rotate(by: .degrees(pose.rotation))
-                    flying.translateBy(x: -50, y: -65)
-                    PointerBitmap.draw(object, in: &flying)
-                    layer.translateBy(x: PointerGeometry.wrist(style).x - 48.5, y: PointerGeometry.cuffBottom(style) - 127.5)
-                    PointerArtwork.draw(hand, style: .wizardWand, in: &layer)
-                }
+                context.saveGState()
+                context.setAlpha(mix)
+                context.beginTransparencyLayer(auxiliaryInfo: nil)
+                let lift = min(pose.lift, max(0, availableTopRoom - 10))
+                context.saveGState()
+                context.translateBy(x: 50, y: 65 - lift)
+                context.rotate(by: pose.rotation * .pi / 180)
+                context.translateBy(x: -50, y: -65)
+                PointerBitmap.draw(object, in: context)
+                context.restoreGState()
+                context.translateBy(x: PointerGeometry.wrist(style).x - 48.5, y: PointerGeometry.cuffBottom(style) - 127.5)
+                PointerBitmap.draw(hand, in: context, clip: PointerGeometry.gloveClip(.wizardWand))
+                context.endTransparencyLayer()
+                context.restoreGState()
             }
         }
     }

@@ -63,3 +63,7 @@ Idle animation is assembled in code from these independent layers. The prop foll
 Source PNGs retain their original pixels. Rendering preserves each curved cuff while cutting the painted wrist out from its opening (`PointerGeometry.wristRim` and `gloveClip`). The procedural forearm starts two local points inside that opening. A single `PointerFigure` Canvas draws the forearm and glove using one animated phase and transform, then applies one shadow to the combined silhouette. Bitmaps are decoded once and drawn synchronously through CoreGraphics in the same Canvas pass as the arm. This keeps the joint continuous during click compression, spring overshoot and idle gestures. Catching hands are aligned to the selected character's cuff.
 
 `Tappy-1.3.3-tap-preview.png` shows enlarged rendered tap and rebound frames on light and dark backgrounds.
+
+## Version 1.3.4 live surface
+
+The live cursor uses `CursorOverlayView`, a native AppKit surface. It clears its entire transparent frame before calling the same CoreGraphics figure renderer used by the SwiftUI previews. Settings are sampled once per frame; previous size/style layers are never retained. Native tap timing preserves squash, hold, spring rebound and rapid-click interruption. Existing PNGs and cuff attachments are unchanged.

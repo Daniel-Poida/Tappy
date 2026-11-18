@@ -25,6 +25,33 @@ struct TapBurst: View {
     var visible: Bool
     var style: PointerStyle = .classic
     var reduceMotion = false
+    static func draw(in context: CGContext, position: CGPoint, impact: Double, style: PointerStyle, opacity: Double) {
+        guard opacity > 0 else { return }
+        context.saveGState()
+        context.setAlpha(opacity)
+        context.translateBy(x: position.x, y: position.y)
+        let scale = 0.6 + 0.4 * opacity
+        context.scaleBy(x: scale, y: scale)
+        let accent: CGColor = style == .moonWand ? NSColor.systemPink.cgColor : style == .starWand ? NSColor.systemYellow.cgColor : style == .wizardWand ? NSColor.systemCyan.cgColor : CGColor(red: 0.45, green: 0.93, blue: 0.74, alpha: 1)
+        for i in 0..<(7 + Int(impact * 6)) {
+            let angle = Double(i) / Double(7 + Int(impact * 6)) * .pi * 2
+            let inner = 13 + impact * 7
+            let outer = inner + 8 + impact * 23 * (i % 2 == 0 ? 1 : 0.6)
+            let a = CGPoint(x: cos(angle) * inner, y: sin(angle) * inner)
+            let b = CGPoint(x: cos(angle) * outer, y: sin(angle) * outer)
+            context.setLineCap(.round)
+            for (color, width) in [(NSColor.white.cgColor, 7.0), (CGColor(red: 0.12, green: 0.15, blue: 0.18, alpha: 1), 4.5), (impact > 0.8 ? NSColor.systemYellow.cgColor : accent, 2.0)] {
+                context.setStrokeColor(color); context.setLineWidth(width)
+                context.move(to: a); context.addLine(to: b); context.strokePath()
+            }
+            if style != .classic && i % 2 == 0 {
+                let star = PointerGeometry.star(center: CGPoint(x: cos(angle) * (outer + 8), y: sin(angle) * (outer + 8)), radius: 3 + impact * 4, points: 4)
+                context.addPath(star.cgPath); context.setStrokeColor(NSColor.white.cgColor); context.setLineWidth(3); context.strokePath()
+                context.addPath(star.cgPath); context.setFillColor(accent); context.fillPath()
+            }
+        }
+        context.restoreGState()
+    }
     var body: some View {
         Canvas { context, size in
             let center = CGPoint(x: size.width / 2, y: size.height / 2)

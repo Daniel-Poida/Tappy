@@ -2,6 +2,8 @@ import Cocoa
 import SwiftUI
 
 final class CursorOverlayWindow: NSWindow, ObservableObject {
+    private static weak var activeOverlay: CursorOverlayWindow?
+    private let surface = CursorOverlayView(frame: .zero)
     let cursorState = CursorState()
     @Published private(set) var isActive = false
     @Published private(set) var presentationMode = false
@@ -23,10 +25,9 @@ final class CursorOverlayWindow: NSWindow, ObservableObject {
         ignoresMouseEvents = true
         collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
         isReleasedWhenClosed = false
-        let view = NSHostingView(rootView: CursorView(state: cursorState))
-        view.frame = NSRect(origin: .zero, size: frame.size)
-        view.autoresizingMask = [.width, .height]
-        contentView = view
+        surface.frame = NSRect(origin: .zero, size: frame.size)
+        surface.autoresizingMask = [.width, .height]
+        contentView = surface
         NotificationCenter.default.addObserver(self, selector: #selector(screensChanged), name: NSApplication.didChangeScreenParametersNotification, object: nil)
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(suspend), name: NSWorkspace.sessionDidResignActiveNotification, object: nil)
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(suspend), name: NSWorkspace.willSleepNotification, object: nil)
@@ -41,8 +42,11 @@ final class CursorOverlayWindow: NSWindow, ObservableObject {
     func toggle() { isActive ? deactivate() : activate() }
     func activate() {
         guard !isActive else { return }
+        Self.activeOverlay?.deactivate()
+        Self.activeOverlay = self
         isActive = true
         updateCursorPosition()
+        surface.update(state: cursorState, settings: .shared)
         orderFrontRegardless()
         startTracking()
         systemCursor.setHidden(true)
@@ -51,6 +55,8 @@ final class CursorOverlayWindow: NSWindow, ObservableObject {
     func deactivate() {
         setPresentation(false)
         isActive = false
+        if Self.activeOverlay === self { Self.activeOverlay = nil }
+        surface.reset()
         orderOut(nil)
         trackingTimer?.invalidate(); trackingTimer = nil
         if let clickMonitor { NSEvent.removeMonitor(clickMonitor) }; clickMonitor = nil
@@ -95,13 +101,18 @@ final class CursorOverlayWindow: NSWindow, ObservableObject {
             presentationMode = !presentationShields.isEmpty
             onChange?()
         }
-        if isActive { updateCursorPosition(); systemCursor.refresh(force: true) }
+        if isActive {
+            updateCursorPosition()
+            surface.update(state: cursorState, settings: .shared)
+            systemCursor.refresh(force: true)
+        }
     }
 
     private func tap() {
         updateCursorPosition()
         let energy = cursorState.tap(settings: .shared)
         SoundManager.shared.playKnock(energy: energy)
+        surface.update(state: cursorState, settings: .shared)
     }
     private func startTracking() {
         let timer = Timer(timeInterval: 1.0 / 90, repeats: true) { [weak self] _ in
@@ -109,6 +120,7 @@ final class CursorOverlayWindow: NSWindow, ObservableObject {
             self?.systemCursor.refresh()
             self?.cursorState.tick(systemIdle: InputIdleTime.seconds,
                                     reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+            if let self { self.surface.update(state: self.cursorState, settings: .shared) }
         }
         timer.tolerance = 0.002
         RunLoop.main.add(timer, forMode: .common)
