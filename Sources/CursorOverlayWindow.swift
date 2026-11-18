@@ -9,7 +9,7 @@ final class CursorOverlayWindow: NSWindow, ObservableObject {
     private var clickMonitor: Any?
     private var localMonitor: Any?
     private var presentationShields: [PresentationShieldWindow] = []
-    private var cursorHidden = false
+    private let systemCursor = SystemCursorController()
     var onChange: (() -> Void)?
 
     override var canBecomeKey: Bool { false }
@@ -30,6 +30,12 @@ final class CursorOverlayWindow: NSWindow, ObservableObject {
         NotificationCenter.default.addObserver(self, selector: #selector(screensChanged), name: NSApplication.didChangeScreenParametersNotification, object: nil)
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(suspend), name: NSWorkspace.sessionDidResignActiveNotification, object: nil)
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(suspend), name: NSWorkspace.willSleepNotification, object: nil)
+        for name in [NSWorkspace.didActivateApplicationNotification, NSWorkspace.activeSpaceDidChangeNotification, NSWorkspace.screensDidWakeNotification] {
+            NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(cursorContextChanged), name: name, object: nil)
+        }
+        for name in [NSApplication.didBecomeActiveNotification, NSApplication.didResignActiveNotification] {
+            NotificationCenter.default.addObserver(self, selector: #selector(cursorContextChanged), name: name, object: nil)
+        }
     }
 
     func toggle() { isActive ? deactivate() : activate() }
@@ -39,7 +45,7 @@ final class CursorOverlayWindow: NSWindow, ObservableObject {
         updateCursorPosition()
         orderFrontRegardless()
         startTracking()
-        if !cursorHidden { CGDisplayHideCursor(CGMainDisplayID()); cursorHidden = true }
+        systemCursor.setHidden(true)
         onChange?()
     }
     func deactivate() {
@@ -49,11 +55,12 @@ final class CursorOverlayWindow: NSWindow, ObservableObject {
         trackingTimer?.invalidate(); trackingTimer = nil
         if let clickMonitor { NSEvent.removeMonitor(clickMonitor) }; clickMonitor = nil
         if let localMonitor { NSEvent.removeMonitor(localMonitor) }; localMonitor = nil
-        if cursorHidden { CGDisplayShowCursor(CGMainDisplayID()); cursorHidden = false }
+        systemCursor.setHidden(false)
         cursorState.reset()
         onChange?()
     }
     @objc private func suspend() { deactivate() }
+    @objc private func cursorContextChanged() { systemCursor.refresh(force: true) }
 
     @discardableResult
     func setPresentation(_ enabled: Bool) -> Bool {
@@ -88,7 +95,7 @@ final class CursorOverlayWindow: NSWindow, ObservableObject {
             presentationMode = !presentationShields.isEmpty
             onChange?()
         }
-        if isActive { updateCursorPosition() }
+        if isActive { updateCursorPosition(); systemCursor.refresh(force: true) }
     }
 
     private func tap() {
@@ -99,6 +106,7 @@ final class CursorOverlayWindow: NSWindow, ObservableObject {
     private func startTracking() {
         let timer = Timer(timeInterval: 1.0 / 90, repeats: true) { [weak self] _ in
             self?.updateCursorPosition()
+            self?.systemCursor.refresh()
             self?.cursorState.tick(systemIdle: InputIdleTime.seconds,
                                     reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
         }

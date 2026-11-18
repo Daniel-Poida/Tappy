@@ -14,7 +14,7 @@ trap 'rm -rf "$STAGING_DIR"' EXIT
 cp -R "$APP_PATH" "$STAGING_DIR/"
 ln -s /Applications "$STAGING_DIR/Applications"
 cat > "$STAGING_DIR/Start here.txt" <<'README'
-TAPPY 1.3.1 — POLISHED POINTERS
+TAPPY 1.3.2 — POLISHED POINTERS
 
 Drag Tappy into Applications, then open it.
 Choose your character and try clicking the preview.

@@ -155,6 +155,66 @@ import Cocoa
             expect(!pose.isFlying && pose.handMix == 0 && pose.rotation == 0, "Wand poses do not loop by themselves")
         }
         expect(IdlePose(time: 60.8).fidgetWeights == [1, 0, 0], "Finger poses do not loop by themselves")
+        let cursorBackend = FakeCursorBackend()
+        let systemCursor = SystemCursorController(backend: cursorBackend)
+        systemCursor.setHidden(true)
+        expect(cursorBackend.backgroundEnabled && !cursorBackend.visible && cursorBackend.depth == 1, "Background cursor control hides the system pointer")
+        for i in 0..<100 { systemCursor.refresh(at: ProcessInfo.processInfo.systemUptime + Double(i) / 100) }
+        expect(cursorBackend.hideCalls == 1 && cursorBackend.depth == 1, "Tracking does not accumulate hide requests")
+        for _ in 0..<20 {
+            cursorBackend.visible = true // Simulate WindowServer restoring it after an app/Space change.
+            systemCursor.refresh(force: true)
+            expect(!cursorBackend.visible && cursorBackend.depth == 1, "Application transitions re-hide the pointer with one balanced request")
+        }
+        systemCursor.setHidden(false)
+        expect(cursorBackend.visible && cursorBackend.depth == 0 && !cursorBackend.backgroundEnabled, "Disabling Tappy fully restores the system pointer")
+        systemCursor.setHidden(false)
+        expect(cursorBackend.showCalls == cursorBackend.hideCalls, "Repeated disable does not over-show the system cursor")
+        cursorBackend.hideSucceeds = false
+        systemCursor.setHidden(true)
+        expect(!systemCursor.ownsHide && cursorBackend.depth == 0, "Failed hides are not recorded as successful")
+        cursorBackend.hideSucceeds = true
+        systemCursor.refresh(force: true)
+        expect(systemCursor.ownsHide && cursorBackend.depth == 1, "A failed hide is retried")
+        cursorBackend.showSucceeds = false
+        systemCursor.setHidden(false)
+        expect(systemCursor.ownsHide && cursorBackend.backgroundEnabled, "A failed restore remains owned for recovery")
+        cursorBackend.showSucceeds = true
+        systemCursor.refresh(force: true)
+        expect(!systemCursor.ownsHide && cursorBackend.depth == 0 && cursorBackend.visible, "Pending restore recovers after a context change")
+        let cleanupBackend = FakeCursorBackend()
+        do { let controller = SystemCursorController(backend: cleanupBackend); controller.setHidden(true) }
+        expect(cleanupBackend.depth == 0 && cleanupBackend.visible, "Controller cleanup restores its cursor request")
+        let unknownBackend = FakeCursorBackend()
+        unknownBackend.visibilityAvailable = false
+        let unknownController = SystemCursorController(backend: unknownBackend)
+        unknownController.setHidden(true)
+        unknownController.refresh(force: true)
+        expect(unknownBackend.depth == 1, "Unavailable visibility detection refreshes without accumulating hides")
+        unknownController.setHidden(false)
+        expect(unknownBackend.depth == 0, "Fallback hides remain balanced")
         print("PASS: \(checks) assertions — click dynamics, audio, characters, geometry and multi-display coordinates")
+    }
+}
+
+
+private final class FakeCursorBackend: CursorVisibilityBackend {
+    var visible = true
+    var visibilityAvailable = true
+    var backgroundEnabled = false
+    var depth = 0
+    var hideCalls = 0
+    var showCalls = 0
+    var hideSucceeds = true
+    var showSucceeds = true
+    var isVisible: Bool? { visibilityAvailable ? visible : nil }
+    func setBackgroundControl(_ enabled: Bool) -> Bool { backgroundEnabled = enabled; return true }
+    func hide() -> Bool {
+        guard hideSucceeds else { return false }
+        hideCalls += 1; depth += 1; visible = false; return true
+    }
+    func show() -> Bool {
+        guard showSucceeds else { return false }
+        showCalls += 1; depth -= 1; visible = depth == 0; return true
     }
 }

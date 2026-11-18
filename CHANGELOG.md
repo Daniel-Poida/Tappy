@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.2
+
+- Keep the system cursor hidden when Tappy is active in the background.
+- Restore cursor visibility after app, Space and display transitions without accumulating hide requests.
+- Retry failed operations and balance cursor restoration on disable, cleanup and quit.
+
 ## 1.3.1
 
 - Idle gestures play once per configured interval, with no internal loop. An interval of 30 seconds produces one animation at 30, 60, 90 seconds of inactivity.
