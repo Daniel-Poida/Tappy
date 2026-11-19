@@ -28,7 +28,7 @@ final class CursorOverlayView: NSView {
             impact: state.impact, shadow: settings.shadowEnabled, reduceMotion: reduceMotion, lean: state.lean,
             lowerOpacity: settings.armOpacity, extensionFraction: settings.armExtension,
             idleTime: state.idleTime, availableTopRoom: state.position.y,
-            phase: reduceMotion ? 0 : motion.phase(at: time))
+            phase: reduceMotion ? 0 : motion.phase(at: time), fingerWeights: state.fingerWeights)
         currentFrame = CursorOverlayFrame(figure: figure, burstOpacity: motion.burstOpacity(at: time))
         needsDisplay = true
     }

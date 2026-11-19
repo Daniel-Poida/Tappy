@@ -1,6 +1,6 @@
-# Tappy 1.4.1
+# Tappy 1.4.2
 
-[Download Tappy 1.4.1 for macOS](https://github.com/Daniel-Poida/Tappy/releases/download/v1.4.1/Tappy-1.4.1.dmg) · [Release notes](https://github.com/Daniel-Poida/Tappy/releases/tag/v1.4.1)
+[Download Tappy 1.4.2 for macOS](https://github.com/Daniel-Poida/Tappy/releases/download/v1.4.2/Tappy-1.4.2.dmg) · [Release notes](https://github.com/Daniel-Poida/Tappy/releases/tag/v1.4.2)
 
 A playful macOS pointer for presentations, demos and screen shares. Eight characters arranged in two rows, each with exactly four fingers and its own sound and a readable dark contour with a narrow white keyline.
 
@@ -19,18 +19,28 @@ A playful macOS pointer for presentations, demos and screen shares. Eight charac
 
 | Light appearance | Dark appearance |
 | --- | --- |
-| ![Tappy 1.4.1 settings in light appearance](Assets/Tappy-1.4.1-settings-light.png) | ![Tappy 1.4.1 settings in dark appearance](Assets/Tappy-1.4.1-settings-dark.png) |
+| ![Tappy 1.4.2 settings in light appearance](Assets/Tappy-1.4.2-settings-light.png) | ![Tappy 1.4.2 settings in dark appearance](Assets/Tappy-1.4.2-settings-dark.png) |
 
-![The eight Tappy characters on light and dark backgrounds](Assets/Tappy-1.4.1-preview.png)
+![The eight Tappy characters on light and dark backgrounds](Assets/Tappy-1.4.2-preview.png)
 
 <details>
 <summary>Idle animation frames: finger play and quick wand tosses</summary>
 
-![Idle finger poses and independent wand toss frames](Assets/Tappy-1.4.1-idle-preview.png)
+![Idle finger poses and independent wand toss frames](Assets/Tappy-1.4.2-idle-preview.png)
 
-![Wrist continuity during click compression and spring rebound](Assets/Tappy-1.4.1-tap-preview.png)
+![Wrist continuity during click compression and spring rebound](Assets/Tappy-1.4.2-tap-preview.png)
 
 </details>
+
+## What's new in 1.4.2
+
+- Redrawn Classic and Witch finger poses: **index → two → three → fist → middle → fist → index**, once per configured idle interval.
+- Right-click uses the middle finger, passing through a fist on both press and release. Holding the button holds the middle finger; short and repeated clicks preserve the sequence.
+- Sixteen whole painted cels for each finger hand, including thumb transitions. Cels use a fixed cuff registration without image deformation, cut-up fingers or pose crossfades. Finger animations now play 1.5× faster (about 1.87 seconds per idle gesture). Closed-fist pauses remain visible in both directions; right-click gestures keep a constant scale. Right-click works in the live cursor, presentation mode and preview.
+
+![Classic and Witch finger animation](Assets/Tappy-1.4.2-fingers.gif)
+
+![Right-click passes through the fist in both directions](Assets/Tappy-1.4.2-right-click.gif)
 
 ## What's new in 1.4.1
 
@@ -80,7 +90,7 @@ Build a universal Apple Silicon + Intel application, regenerate icons, and creat
 ./build-dmg.sh
 ```
 
-Outputs `build/Tappy.app`, `build/Tappy-1.4.dmg` and its SHA-256 checksum. The local bundle and DMG are ad-hoc signed; distribution with Apple notarization requires a Developer ID certificate.
+Outputs `build/Tappy.app`, `build/Tappy-1.4.2.dmg` and its SHA-256 checksum. The local bundle and DMG are ad-hoc signed; distribution with Apple notarization requires a Developer ID certificate.
 
 Checks cover click energy and decay, volume scaling, playable and unclipped distinct sounds, artwork loading, fixed click hotspots at all animation phases, short-to-full-screen forearm length, opacity falloff, motion damping, presentation mouse handling, idle timing and interruption, animation layer loading and multi-display coordinates.
 

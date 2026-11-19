@@ -1,5 +1,6 @@
 import Cocoa
 import SwiftUI
+import ImageIO
 
 struct AppIconArtwork: View {
     var body: some View {
@@ -55,16 +56,85 @@ struct IdleContactSheet: View {
             ForEach(PointerStyle.allCases) { style in
                 HStack(spacing: 12) {
                     Text(style.title).font(.system(size: 14, weight: .medium)).frame(width: 90)
-                    ForEach(style.isFingerHand ? [0.2, 0.8, 1.5, 2.35] : [0.1, 0.48, 0.7, 1.0], id: \.self) { time in
+                    ForEach(style.isFingerHand ? [0.1, 0.45, 0.9, 1.3, 1.8, 2.2, 2.65] : [0.1, 0.48, 0.7, 1.0], id: \.self) { time in
+                        VStack(spacing: 5) {
+                        Text(style.isFingerHand ? fingerLabel(time) : String(format: "%.2f s", time)).font(.system(size: 11, weight: .medium))
                         ZStack(alignment: .topLeading) {
                             Color(nsColor: .controlBackgroundColor)
-                            PointerFigure(position: CGPoint(x: 82, y: 60), style: style, lowerOpacity: 0.2,
-                                          idleTime: time, availableTopRoom: 80)
-                        }.frame(width: 166, height: 250).clipShape(RoundedRectangle(cornerRadius: 12))
+                            PointerFigure(position: CGPoint(x: 65, y: 35), style: style, size: 0.85, lowerOpacity: 0.2,
+                                          idleTime: style.isFingerHand ? time / FingerAnimationTiming.playbackRate : time, availableTopRoom: 80)
+                        }.frame(width: 140, height: 220).clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
                     }
                 }
             }
         }.padding(24).background(Color(nsColor: .windowBackgroundColor)).environment(\.colorScheme, .light)
+    }
+    private func fingerLabel(_ time: Double) -> String {
+        switch time {
+        case ..<0.3: return "1"
+        case ..<0.7: return "1 + 2"
+        case ..<1.1: return "1 + 2 + 3"
+        case ..<1.6: return "Fist"
+        case ..<2.0: return "2"
+        case ..<2.5: return "Fist"
+        default: return "1"
+        }
+    }
+}
+
+private struct FingerAnimationPreview: View {
+    let time: Double
+    var secondary = false
+    private var secondaryWeights: [Double]? {
+        var gesture=SecondaryFingerGesture();gesture.press(at:0);gesture.release(at:0.55)
+        return gesture.weights(at:time)
+    }
+    var body: some View {
+        VStack(spacing: 12) {
+            Text(secondary ? "Right click: 1 → Fist → 2 → Fist → 1" : "1 → 1+2 → 1+2+3 → Fist → 2 → Fist → 1").font(.system(size: 16, weight: .semibold))
+            HStack(spacing: 16) {
+                ForEach([PointerStyle.classic, .witch]) { style in
+                    VStack(spacing: 6) {
+                        ZStack(alignment: .topLeading) {
+                            HStack(spacing: 0) { Color(white: 0.95); Color(white: 0.14) }
+                            PointerFigure(position: CGPoint(x: 120, y: 20), style: style, size: 1.45, shadow: true,
+                                          lean: 0, lowerOpacity: 0.3, idleTime: secondary ? nil : time,
+                                          fingerWeights: secondary ? secondaryWeights : nil)
+                        }.frame(width: 260, height: 310).clipShape(RoundedRectangle(cornerRadius: 15))
+                        Text(style.title).font(.system(size: 14, weight: .medium))
+                    }
+                }
+            }
+        }.padding(18).background(Color.white).foregroundStyle(.black)
+    }
+}
+
+private struct FingerCelContactSheet: View {
+    var body: some View {
+        VStack(spacing: 12) {
+            ForEach([PointerStyle.classic, .witch]) { style in
+                Text(style.title).font(.system(size: 22, weight: .bold))
+                ForEach(0..<4) { row in
+                    HStack(spacing: 8) {
+                        ForEach(0..<4) { column in
+                            let index = row * 4 + column
+                            VStack {
+                                Canvas { context, _ in
+                                    context.fill(Path(CGRect(x: 0, y: 0, width: 100, height: 280)), with: .color(Color(white: 0.93)))
+                                    context.fill(Path(CGRect(x: 100, y: 0, width: 100, height: 280)), with: .color(Color(white: 0.14)))
+                                    context.withCGContext { cg in
+                                        cg.translateBy(x: 25, y: 20); cg.scaleBy(x: 1.5, y: 1.5)
+                                        FingerCelArtwork.draw(style: style, weights: FingerCelArtwork.samples[index], in: cg)
+                                    }
+                                }.frame(width: 200, height: 280)
+                                Text("Cel \(index)").font(.system(size: 12, design: .monospaced))
+                            }
+                        }
+                    }
+                }
+            }
+        }.padding(20).background(Color.white).foregroundStyle(.black)
     }
 }
 
@@ -120,6 +190,24 @@ struct TapContactSheet: View {
         idleSheet.scale = 2
         if let cg = idleSheet.cgImage, let data = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]) {
             try data.write(to: root.appendingPathComponent("Tappy-\(AppVersion.short)-idle-preview.png"))
+        }
+        let celSheet = ImageRenderer(content: FingerCelContactSheet())
+        if let cg = celSheet.cgImage, let data = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]) {
+            try data.write(to: root.appendingPathComponent("Tappy-\(AppVersion.short)-cels.png"))
+        }
+        for secondary in [false,true] {
+        let frames = secondary ? 22 : 48
+        let gifURL = root.appendingPathComponent("Tappy-\(AppVersion.short)-\(secondary ? "right-click" : "fingers").gif")
+        guard let gif = CGImageDestinationCreateWithURL(gifURL as CFURL, "com.compuserve.gif" as CFString, frames, nil) else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        CGImageDestinationSetProperties(gif, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]] as CFDictionary)
+        for frame in 0..<frames {
+            let renderer = ImageRenderer(content: FingerAnimationPreview(time: Double(frame) * 0.05, secondary:secondary))
+            guard let image = renderer.cgImage else { throw CocoaError(.fileWriteUnknown) }
+            CGImageDestinationAddImage(gif, image, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: 0.05]] as CFDictionary)
+        }
+        guard CGImageDestinationFinalize(gif) else { throw CocoaError(.fileWriteUnknown) }
         }
         let tapSheet = ImageRenderer(content: TapContactSheet())
         tapSheet.scale = 2

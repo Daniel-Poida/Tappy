@@ -28,10 +28,61 @@ enum InputIdleTime {
     }
 }
 
+enum FingerPose: Int, CaseIterable {
+    case index, two, three, fist, middle
+    var weights: [Double] { Self.allCases.map { $0 == self ? 1 : 0 } }
+}
+
+enum FingerAnimationTiming {
+    static let playbackRate = 1.5
+}
+
+/// The same fist is the bridge on press and release. Short clicks still show
+/// the middle finger once; a new press starts from the currently drawn pose.
+struct SecondaryFingerGesture {
+    private var pressedAt: TimeInterval?
+    private var returningAt: TimeInterval?
+    private var initialWeights = FingerPose.index.weights
+    private var animated = true
+    mutating func press(at time: TimeInterval, animated: Bool = true) {
+        initialWeights = weights(at: time) ?? FingerPose.index.weights
+        self.animated = animated
+        pressedAt = time; returningAt = nil
+    }
+    mutating func release(at time: TimeInterval) {
+        guard let pressedAt, returningAt == nil else { return }
+        returningAt = max(time, pressedAt + (animated ? 0.40 / FingerAnimationTiming.playbackRate : 0))
+    }
+    mutating func reset() { pressedAt = nil; returningAt = nil; initialWeights = FingerPose.index.weights }
+    func weights(at time: TimeInterval) -> [Double]? {
+        guard let pressedAt else { return nil }
+        if !animated {
+            if let returningAt, time >= returningAt + 0.16 { return nil }
+            return FingerPose.middle.weights
+        }
+        func blend(_ from: [Double], _ to: FingerPose, _ progress: Double) -> [Double] {
+            let raw = min(1, max(0, progress)), t = raw * raw * (3 - 2 * raw)
+            return zip(from, to.weights).map { $0 * (1 - t) + $1 * t }
+        }
+        if let returningAt, time >= returningAt {
+            let elapsed = (time - returningAt) * FingerAnimationTiming.playbackRate
+            if elapsed < 0.10 { return blend(FingerPose.middle.weights, .fist, elapsed / 0.10) }
+            if elapsed < 0.20 { return FingerPose.fist.weights }
+            if elapsed < 0.32 { return blend(FingerPose.fist.weights, .index, (elapsed - 0.20) / 0.12) }
+            return nil
+        }
+        let elapsed = max(0, time - pressedAt) * FingerAnimationTiming.playbackRate
+        if elapsed < 0.10 { return blend(initialWeights, .fist, elapsed / 0.10) }
+        if elapsed < 0.20 { return FingerPose.fist.weights }
+        if elapsed < 0.32 { return blend(FingerPose.fist.weights, .middle, (elapsed - 0.20) / 0.12) }
+        return FingerPose.middle.weights
+    }
+}
+
 struct IdlePose {
     let cycle: Double
     init(time: Double) { cycle = max(0, time) }
-    static func duration(for style: PointerStyle) -> Double { style.isFingerHand ? 2.6 : 1.15 }
+    static func duration(for style: PointerStyle) -> Double { style.isFingerHand ? 2.8 / FingerAnimationTiming.playbackRate : 1.15 }
     private var tossCycle: Double { cycle }
     /// A complete toss includes anticipation, release, one revolution, and a catch.
     var flight: Double {
@@ -49,22 +100,27 @@ struct IdlePose {
         return smooth((tossCycle - 0.2) / 0.15)
     }
     var fidgetWeights: [Double] {
-        let keyframes: [(Double, Int)] = [(0, 0), (0.4, 0), (0.6, 1), (1.05, 1), (1.25, 2),
-                                         (1.7, 2), (1.9, 1), (2.35, 1), (2.6, 0), (4.4, 0)]
-        for i in 0..<(keyframes.count - 1) where cycle >= keyframes[i].0 && cycle <= keyframes[i + 1].0 {
+        let fingerCycle = cycle * FingerAnimationTiming.playbackRate
+        let keyframes: [(Double, FingerPose)] = [
+            (0, .index), (0.20, .index), (0.32, .two), (0.64, .two),
+            (0.76, .three), (1.08, .three), (1.20, .fist), (1.48, .fist),
+            (1.60, .middle), (1.98, .middle), (2.10, .fist), (2.36, .fist),
+            (2.50, .index), (2.80, .index)
+        ]
+        for i in 0..<(keyframes.count - 1) where fingerCycle >= keyframes[i].0 && fingerCycle <= keyframes[i + 1].0 {
             let a = keyframes[i], b = keyframes[i + 1]
-            let raw = (cycle - a.0) / max(0.001, b.0 - a.0)
+            let raw = (fingerCycle - a.0) / max(0.001, b.0 - a.0)
             let t = raw * raw * (3 - 2 * raw)
-            var weights = [0.0, 0, 0]
-            weights[a.1] += 1 - t; weights[b.1] += t
+            var weights = Array(repeating: 0.0, count: FingerPose.allCases.count)
+            weights[a.1.rawValue] += 1 - t; weights[b.1.rawValue] += t
             return weights
         }
-        return [1, 0, 0]
+        return [1, 0, 0, 0, 0]
     }
 }
 
 enum IdleImages {
-    static let names = ["ClassicWave", "ClassicFist", "Catch", "MoonWandObject", "StarWandObject", "WizardWandObject", "WitchWave", "WitchFist", "FinnSwordObject", "RedLightsaberObject", "GreenLightsaberObject"]
+    static let names = ["Catch", "MoonWandObject", "StarWandObject", "WizardWandObject", "FinnSwordObject", "RedLightsaberObject", "GreenLightsaberObject"]
     static let images: [String: NSImage] = {
         var result: [String: NSImage] = [:]
         for name in names {
@@ -83,15 +139,15 @@ enum IdleImages {
 }
 
 enum IdlePointerArtwork {
+    static func drawFingers(style: PointerStyle, weights: [Double], in context: CGContext) {
+        FingerCelArtwork.draw(style:style,weights:weights,in:context)
+    }
     static func draw(style: PointerStyle, time: Double, in context: CGContext, availableTopRoom: Double) {
         let pose = IdlePose(time: time)
         guard let normal = PointerImages.bitmaps[style] else { return }
         if style.isFingerHand {
-            let prefix = style == .witch ? "Witch" : "Classic"
-            let weights = pose.fidgetWeights
-            PointerBitmap.draw(normal, in: context, opacity: weights[0], clip: PointerGeometry.gloveClip(style))
-            if let wave = IdleImages.bitmaps[prefix + "Wave"] { PointerBitmap.draw(wave, in: context, opacity: weights[1], clip: PointerGeometry.gloveClip(style)) }
-            if let fist = IdleImages.bitmaps[prefix + "Fist"] { PointerBitmap.draw(fist, in: context, opacity: weights[2], clip: PointerGeometry.gloveClip(style)) }
+            // Timing chooses one whole painted hand, including its thumb and cuff.
+            drawFingers(style: style, weights: pose.fidgetWeights, in: context)
         } else {
             let mix = pose.handMix
             PointerBitmap.draw(normal, in: context, opacity: 1 - mix, clip: PointerGeometry.gloveClip(style))

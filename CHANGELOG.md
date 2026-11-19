@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.4.2
+
+- Redraw the Classic and Witch idle hands with consistent dorsal anatomy; add three-finger and middle-finger poses.
+- Play the requested sequence: index → two → three → fist → middle → fist → index, once per configured idle interval.
+- Use the middle finger for right-clicks, with a fist on both press and release. Keep short clicks, holding, rapid repeats and primary-click interruption coherent.
+- Preserve right-button identity in the live overlay, presentation shields and preview. Anchor clicks to the active fingertip.
+- Replace deformed finger meshes with sixteen complete painted cels per hand. Register the cuff and wrist using constant uniform transforms; retain visible fist pauses at 1.5× playback speed without global squash resizing.
+- Add an animated preview and updated screenshots.
+
 ## 1.4.1
 
 - Fix the system arrow appearing over Dock by temporarily registering a transparent system arrow while Tappy is active.

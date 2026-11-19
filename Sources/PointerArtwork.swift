@@ -5,14 +5,17 @@ import Cocoa
 enum PointerGeometry {
     static func tip(_ style: PointerStyle) -> CGPoint {
         switch style {
-        case .classic: return CGPoint(x: 48.8, y: 7.2)
+        case .classic: return FingerCelArtwork.tip(style) ?? CGPoint(x: 48.8, y: 7.2)
         case .moonWand: return CGPoint(x: 50, y: 1.9)
         case .starWand: return CGPoint(x: 50, y: 2.4)
         case .wizardWand: return CGPoint(x: 50, y: 4.1)
-        case .witch: return CGPoint(x: 57.5, y: 4)
+        case .witch: return FingerCelArtwork.tip(style) ?? CGPoint(x: 57.5, y: 4)
         case .finnSword: return CGPoint(x: 50, y: 2.7)
         case .redLightsaber, .greenLightsaber: return CGPoint(x: 50, y: 5.2)
         }
+    }
+    static func middleTip(_ style: PointerStyle) -> CGPoint {
+        FingerCelArtwork.tip(style, middle: true) ?? (style == .witch ? CGPoint(x: 60.16, y: 4.47) : CGPoint(x: 55.69, y: 7.26))
     }
     static func wrist(_ style: PointerStyle) -> CGPoint {
         CGPoint(x: style == .classic ? 49.5 : style == .witch ? 49.3 : [.wizardWand, .finnSword, .redLightsaber, .greenLightsaber].contains(style) ? 48.5 : 50, y: wristRim(style) - 2)
@@ -145,6 +148,7 @@ struct PointerPose {
     var impact: Double = 0
     var reduceMotion = false
     var lean: Double = -10
+    var hotspot: CGPoint?
     var scaleX: Double { scaleX(at: tapping ? 1 : 0) }
     var scaleY: Double { scaleY(at: tapping ? 1 : 0) }
     var angle: Double { angle(at: tapping ? 1 : 0) }
@@ -152,7 +156,7 @@ struct PointerPose {
     func scaleY(at progress: Double) -> Double { 1 - progress * (0.09 + impact * 0.22) }
     func angle(at progress: Double) -> Double { reduceMotion ? 0 : lean + progress * (14 + impact * 15) }
     func transform(position: CGPoint = .zero, progress: Double) -> CGAffineTransform {
-        let tip = PointerGeometry.tip(style)
+        let tip = hotspot ?? PointerGeometry.tip(style)
         return CGAffineTransform(translationX: position.x, y: position.y)
             .rotated(by: angle(at: progress) * .pi / 180)
             .scaledBy(x: size * scaleX(at: progress), y: size * scaleY(at: progress))
@@ -242,13 +246,20 @@ struct PointerFigure: View, Animatable {
     var idleTime: Double?
     var availableTopRoom: Double = 100
     var phase: Double?
+    var fingerWeights: [Double]?
     var animatableData: Double {
         get { phase ?? (tapping ? 1 : 0) }
         set { phase = newValue }
     }
     func draw(in context: CGContext, canvas: CGSize) {
-        let progress = phase ?? (tapping ? 1.0 : 0.0)
-        let pose = PointerPose(style: style, size: size, tapping: tapping, impact: impact, reduceMotion: reduceMotion, lean: lean)
+        let progress = style.isFingerHand && fingerWeights != nil ? 0 : phase ?? (tapping ? 1.0 : 0.0)
+        let secondary = style.isFingerHand ? fingerWeights : nil
+        let middleWeight = secondary?[FingerPose.middle.rawValue] ?? 0
+        let indexTip = PointerGeometry.tip(style), middleTip = PointerGeometry.middleTip(style)
+        let activeTip = CGPoint(x: indexTip.x + (middleTip.x - indexTip.x) * middleWeight,
+                                y: indexTip.y + (middleTip.y - indexTip.y) * middleWeight)
+        let pose = PointerPose(style: style, size: size, tapping: tapping, impact: impact, reduceMotion: reduceMotion, lean: lean,
+                               hotspot: secondary == nil ? nil : activeTip)
         let wristOffset = pose.offset(of: PointerGeometry.wrist(style), progress: progress)
         let length = ForearmGeometry.resolvedLength(extensionFraction: extensionFraction, canvasHeight: canvas.height,
             wristY: position.y + wristOffset.y, size: size, lean: reduceMotion ? 0 : lean)
@@ -272,9 +283,13 @@ struct PointerFigure: View, Animatable {
         context.drawLinearGradient(gradient(white: 0, opacity: 1), start: arm.start, end: arm.end, options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
         context.restoreGState()
         context.concatenate(pose.transform(position: position, progress: progress))
-        if let idleTime, !reduceMotion {
+        if let secondary {
+            IdlePointerArtwork.drawFingers(style: style, weights: secondary, in: context)
+        } else if let idleTime, !reduceMotion {
             IdlePointerArtwork.draw(style: style, time: idleTime, in: context,
                 availableTopRoom: availableTopRoom / max(0.1, size))
+        } else if style.isFingerHand {
+            FingerCelArtwork.draw(style:style,weights:FingerPose.index.weights,in:context)
         } else if let image = PointerImages.bitmaps[style] {
             PointerBitmap.draw(image, in: context, clip: PointerGeometry.gloveClip(style))
         }

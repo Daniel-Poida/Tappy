@@ -210,7 +210,10 @@ import SwiftUI
         }
         expect(leftLean < -20 && orientation.angle > 15, "Pointer orientation changes across the screen")
         var shieldTaps = 0
-        let shield = PresentationShieldView(frame: CGRect(x: 0, y: 0, width: 100, height: 100)) { shieldTaps += 1 }
+        var shieldButtons: [PointerButton] = []
+        var shieldReleases: [PointerButton] = []
+        let shield = PresentationShieldView(frame: CGRect(x: 0, y: 0, width: 100, height: 100),
+            onRelease: { shieldReleases.append($0) }) { button in shieldTaps += 1; shieldButtons.append(button) }
         expect(shield.hitTest(CGPoint(x: 20, y: 20)) === shield && shield.hitTest(CGPoint(x: 200, y: 200)) == nil, "Presentation shield captures its screen area")
         expect(shield.acceptsFirstMouse(for: nil) && !shield.acceptsFirstResponder, "Presentation accepts clicks without taking keyboard focus")
         for type: NSEvent.EventType in [.leftMouseDown, .rightMouseDown, .otherMouseDown] {
@@ -218,6 +221,11 @@ import SwiftUI
             switch type { case .leftMouseDown: shield.mouseDown(with: event); case .rightMouseDown: shield.rightMouseDown(with: event); default: shield.otherMouseDown(with: event) }
         }
         expect(shieldTaps == 3, "Every mouse button produces a presentation tap")
+        expect(shieldButtons == [.primary, .secondary, .other], "Presentation mode preserves right-button identity")
+        let rightRelease = NSEvent.mouseEvent(with: .rightMouseUp, location: .zero, modifierFlags: [], timestamp: 0,
+            windowNumber: 0, context: nil, eventNumber: 0, clickCount: 1, pressure: 0)!
+        shield.rightMouseUp(with: rightRelease)
+        expect(shieldReleases == [.secondary], "Presentation mode releases the secondary finger gesture")
         let diskVersion = try String(contentsOfFile: "VERSION", encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
         expect(diskVersion == AppVersion.short, "Source and installer versions agree")
         for style in PointerStyle.allCases {
@@ -239,9 +247,135 @@ import SwiftUI
             }
         }
         for name in IdleImages.names { expect(IdleImages.images[name] != nil, "All idle animation layers are bundled") }
+        let fingerSequence: [(Double, FingerPose)] = [(0.1, .index), (0.45, .two), (0.9, .three),
+            (1.3, .fist), (1.8, .middle), (2.2, .fist), (2.65, .index)]
+        let fingerRate = FingerAnimationTiming.playbackRate
+        expect(IdlePose.duration(for: .classic) < 2 && IdlePose.duration(for: .witch) < 2, "The complete finger sequence finishes in under two seconds")
+        for (time, finger) in fingerSequence {
+            let weights = IdlePose(time: time / fingerRate).fidgetWeights
+            expect(weights[finger.rawValue] == 1 && weights.filter { $0 > 0 }.count == 1,
+                   "Idle finger order is index, two, three, fist, middle, fist, index")
+        }
+        let clickDefaultsName = "Tappy-finger-tests-\(UUID().uuidString)"
+        let clickDefaults = UserDefaults(suiteName: clickDefaultsName)!
+        defer { clickDefaults.removePersistentDomain(forName: clickDefaultsName) }
+        let clickSettings = TappySettings(defaults: clickDefaults)
+        let clickState = CursorState()
+        _ = clickState.tap(settings: clickSettings, button: .secondary, at: 10)
+        clickState.tick(at: 10 + 0.085 / fingerRate, systemIdle: 0, settings: clickSettings, secondaryDown: true)
+        expect(clickState.fingerPose == .fist && clickState.idleTime == nil, "Right-click first closes the index hand into a fist")
+        clickState.tick(at: 10 + 0.34 / fingerRate, systemIdle: 0, settings: clickSettings, secondaryDown: true)
+        expect(clickState.fingerPose == .middle, "The middle finger emerges from the fist on right-click")
+        clickState.tick(at: 15, systemIdle: 0, settings: clickSettings, secondaryDown: true)
+        expect(clickState.fingerPose == .middle, "Middle finger stays selected while the right button is held")
+        clickState.release(button: .secondary, at: 15)
+        clickState.tick(at: 15 + 0.1 / fingerRate, systemIdle: 0, settings: clickSettings)
+        expect(clickState.fingerPose == .fist, "The middle finger closes into a fist on release")
+        clickState.tick(at: 15 + 0.4 / fingerRate, systemIdle: 0, settings: clickSettings)
+        expect(clickState.fingerPose == nil, "Right-button release restores the index gesture")
+        _ = clickState.tap(settings: clickSettings, button: .secondary, at: 20)
+        _ = clickState.tap(settings: clickSettings, button: .primary, at: 20 + 0.05 / fingerRate)
+        clickState.tick(at: 20 + 0.55 / fingerRate, systemIdle: 0, settings: clickSettings)
+        expect(clickState.fingerPose == .fist, "A primary click returns from the secondary gesture through a fist")
+        clickState.tick(at: 20 + 0.8 / fingerRate, systemIdle: 0, settings: clickSettings)
+        expect(clickState.fingerPose == nil, "The interrupted secondary gesture finishes at the index hand")
+        clickSettings.animateOnClick = false
+        _ = clickState.tap(settings: clickSettings, button: .secondary, at: 30)
+        expect(clickState.fingerPose == .middle, "Right-button identity remains visible with click motion disabled")
+        clickState.tick(at: 30.1, systemIdle: 0, settings: clickSettings, reduceMotion: true, secondaryDown: false)
+        clickState.tick(at: 30.3, systemIdle: 0, settings: clickSettings, reduceMotion: true)
+        expect(clickState.fingerPose == nil, "Hardware button state recovers a lost right-button release event")
+        var quickSecondary = SecondaryFingerGesture()
+        quickSecondary.press(at: 0); quickSecondary.release(at: 0.02)
+        for (time, finger) in [(0.15, FingerPose.fist), (0.35, .middle), (0.55, .fist)] {
+            expect(quickSecondary.weights(at: time / fingerRate) == finger.weights,
+                   "A quick right-click visits fist, middle, fist in order")
+        }
+        expect(quickSecondary.weights(at: 0.73 / fingerRate) == nil, "Quick right-click returns to the index hand without looping")
+        for startOffset in [0.0, 0.003, 0.008, 0.015] {
+            var gesture = SecondaryFingerGesture()
+            gesture.press(at: startOffset); gesture.release(at: startOffset + 0.02)
+            var firstFistFrames = 0, returnFistFrames = 0
+            for frame in 0..<36 {
+                let time = Double(frame) / 60
+                if let weights = gesture.weights(at: time), FingerCelArtwork.index(for: weights) == 9 {
+                    if time < startOffset + 0.4 / fingerRate { firstFistFrames += 1 }
+                    else { returnFistFrames += 1 }
+                }
+            }
+            expect(firstFistFrames >= 3 && returnFistFrames >= 3,
+                   "Faster right-clicks retain at least three visible fist frames in each direction at 60 Hz")
+        }
+        var repeatedSecondary = SecondaryFingerGesture()
+        repeatedSecondary.press(at: 0); repeatedSecondary.release(at: 0.22 / fingerRate)
+        let beforeRepeat = repeatedSecondary.weights(at: 0.29 / fingerRate)
+        repeatedSecondary.press(at: 0.29 / fingerRate)
+        expect(repeatedSecondary.weights(at: 0.29 / fingerRate) == beforeRepeat, "A repeated right-click preserves the current drawn pose")
+        func fingerBitmap(_ style: PointerStyle, _ weights: [Double]) -> NSBitmapImageRep {
+            let context=CGContext(data:nil,width:420,height:420,bitsPerComponent:8,bytesPerRow:1680,
+                space:CGColorSpaceCreateDeviceRGB(),bitmapInfo:CGImageAlphaInfo.premultipliedLast.rawValue)!
+            context.translateBy(x:0,y:420);context.scaleBy(x:3,y:-3);context.translateBy(x:20,y:0)
+            FingerCelArtwork.draw(style:style,weights:weights,in:context)
+            return NSBitmapImageRep(cgImage:context.makeImage()!)
+        }
+        for style in [PointerStyle.classic, .witch] {
+            let frames = FingerCelArtwork.frames[style] ?? []
+            expect(frames.count == 16, "Each finger hand has sixteen complete painted cels")
+            for cel in frames {
+                expect(abs(cel.rect.width / CGFloat(cel.image.width) - cel.rect.height / CGFloat(cel.image.height)) < 0.000001,
+                       "Registration preserves the whole cel's proportions")
+                expect(abs(cel.cuffWidth - frames[0].cuffWidth) < 0.000001 && cel.wrist == frames[0].wrist,
+                       "Every cel has the same registered cuff width and wrist anchor")
+            }
+            var distinctFrames = Set<Data>()
+            for sample in FingerCelArtwork.samples.prefix(15) {
+                let image = fingerBitmap(style, sample)
+                distinctFrames.insert(Data(bytes: image.bitmapData!, count: image.bytesPerRow * image.pixelsHigh))
+                for point in [CGPoint(x: 50, y: 90), CGPoint(x: 50, y: 104), CGPoint(x: 50, y: 111)] {
+                    expect(image.colorAt(x: Int((point.x + 20) * 3), y: Int(point.y * 3))!.alphaComponent > 0.98,
+                           "Complete painted cels retain an opaque palm and cuff")
+                }
+            }
+            expect(distinctFrames.count == 15, "Every intermediate cel has its own painted shape")
+            for amount in stride(from: 0.0, through: 1.0, by: 0.05) {
+                let sample = zip(FingerPose.index.weights, FingerPose.fist.weights).map { $0 * (1 - amount) + $1 * amount }
+                expect([0, 14, 13, 9].contains(FingerCelArtwork.index(for: sample)),
+                       "Index folding selects only whole index-to-fist cels")
+            }
+        }
+        for (pose, index) in [(FingerPose.index, 0), (.two, 3), (.three, 6), (.fist, 9), (.middle, 12)] {
+            expect(FingerCelArtwork.index(for: pose.weights) == index, "Held gestures select the intended whole cel")
+        }
+        for time in [0.1, 0.15, 0.19] {
+            expect(FingerCelArtwork.index(for: quickSecondary.weights(at: time / fingerRate)!) == 9,
+                   "The actual painted fist remains visible throughout the first right-click pause")
+            expect(FingerCelArtwork.index(for: quickSecondary.weights(at: (time + 0.4) / fingerRate)!) == 9,
+                   "The actual painted fist remains visible throughout the return pause")
+        }
+        for style: PointerStyle in [.classic, .witch] {
+            for time in fingerSequence.map(\.0) + [0.26, 0.70, 1.14, 1.54, 2.04, 2.43] {
+                let position = CGPoint(x: 280, y: 25)
+                let figure = PointerFigure(position: position, style: style, size: 2, shadow: false, lean: 0,
+                                           lowerOpacity: 1, idleTime: time / fingerRate)
+                let renderer = ImageRenderer(content: figure.frame(width: 600, height: 500))
+                let bitmap = NSBitmapImageRep(cgImage: renderer.cgImage!)
+                let transform = PointerPose(style: style, size: 2, lean: 0).transform(position: position, progress: 0)
+                for y in [100, PointerGeometry.wristRim(style) - 1, PointerGeometry.wristRim(style) + 1] {
+                    let point = CGPoint(x: PointerGeometry.wrist(style).x, y: y).applying(transform)
+                    expect(bitmap.colorAt(x: Int(point.x.rounded()), y: Int(point.y.rounded()))!.alphaComponent > 0.98,
+                           "Finger changes keep the palm, cuff and arm opaque and connected")
+                }
+            }
+            for phase in [0.0, 0.5, 1.0, -0.15] {
+                let tip = PointerGeometry.middleTip(style)
+                let pose = PointerPose(style: style, size: 1.6, impact: 1, lean: 24, hotspot: tip)
+                let fixedTip = tip.applying(pose.transform(position: CGPoint(x: 200, y: 30), progress: phase))
+                expect(hypot(fixedTip.x - 200, fixedTip.y - 30) < 0.00001, "Right-click stays anchored to the second fingertip")
+            }
+        }
         for i in 0..<450 {
             let pose = IdlePose(time: Double(i) / 100)
-            expect(abs(pose.fidgetWeights.reduce(0, +) - 1) < 0.000001, "Finger pose crossfades preserve opacity")
+            expect(abs(pose.fidgetWeights.reduce(0, +) - 1) < 0.000001, "Finger timing weights stay normalized")
             expect(pose.fidgetWeights.allSatisfy { (0...1).contains($0) }, "Finger pose weights remain valid")
             expect(pose.lift >= 0 && pose.lift <= 33 && pose.rotation >= 0 && pose.rotation <= 360, "Wand toss remains bounded")
         }
@@ -253,7 +387,7 @@ import SwiftUI
             let pose = IdlePose(time: time)
             expect(!pose.isFlying && pose.handMix == 0 && pose.rotation == 0, "Wand poses do not loop by themselves")
         }
-        expect(IdlePose(time: 60.8).fidgetWeights == [1, 0, 0], "Finger poses do not loop by themselves")
+        expect(IdlePose(time: 60.8).fidgetWeights == [1, 0, 0, 0, 0], "Finger poses do not loop by themselves")
         let cursorBackend = FakeCursorBackend()
         let systemCursor = SystemCursorController(backend: cursorBackend)
         systemCursor.setHidden(true)

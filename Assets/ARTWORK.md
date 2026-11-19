@@ -79,3 +79,41 @@ Full prompt sets: [production character and idle prompts](New-characters-prompts
 The original characters remain in row one. The second row is Witch, Finn sword, Red saber, Green saber. Production geometry clips baked wrists at each cuff opening; generated prop layers are clipped to their object region during tosses.
 
 Witch anatomy was corrected using the classic glove poses as references: folded fingers curl into the hidden palm, without nails hanging over the back of the hand. A second refinement made the knuckles smaller and more angular. The wave has exactly two extended fingers, one folded finger and one thumb; the fist has three folded fingers and one thumb. The cuff, wrist attachment and alpha remain aligned.
+
+
+## Version 1.4.2 finger animation
+
+The built-in image_gen tool produced sixteen complete transparent animation
+cels for each of Classic and Witch. Production atlases are the eight 2×2 sheets
+in `Sources/Resources/Hands/Idle/Frames/`. Full generation and background cleanup
+prompts and the identity references are in [Cel-animation-prompts.json](Cel-animation-prompts.json).
+Earlier pose studies are preserved in `Assets/Finger-reference-poses/` with
+[their prompt set](Finger-animation-prompts.json); they are not bundled in the app.
+
+`FingerCelArtwork` selects one entire painted cel per frame. It does not split
+fingers, deform meshes or crossfade hands. Each cel has a constant uniform scale
+and translation from `Registration.json`, matching cuff width and wrist opening
+to the original character. Recompute these measurements with `swift Tools/RegisterFingerCels.swift`, then review the exported contact sheet. The source PNGs retain their original alpha. Atlas
+quadrants are cropped and decoded once; no creative pixel edits occur at runtime.
+The forearm joins the same clipped cuff in the same native render pass.
+
+Cel order (A, B, C, D; row-major within each sheet):
+
+- A: index; neighboring finger partly raised twice; two fingers.
+- B: third finger partly raised twice; three fingers; closing toward fist.
+- C: nearly closed; full fist with tucked thumb; middle partly raised twice.
+- D: middle; index partly raised twice with reopening thumb; index reference.
+
+The idle sequence is index → index + middle → three fingers → fist → middle only
+→ fist → index, once in about 1.87 seconds per configured idle interval. Right-click is
+index → fist → middle on press, then middle → fist → index on release. Each
+closed-fist pause lasts about 67 milliseconds (four frames at 60 Hz). Short clicks complete both halves; holding
+keeps the middle finger raised. Repeats preserve the current timing state.
+Secondary gestures disable global squash to retain constant scale.
+
+Mouse-button identity is preserved in the native overlay, presentation shields
+and preview. Disabled click animation and Reduce Motion use static secondary
+feedback. `Tappy-1.4.2-cels.png` shows the registered whole cels;
+`Tappy-1.4.2-fingers.gif` and `Tappy-1.4.2-right-click.gif` use the production
+renderer and timing. GIFs loop for demonstration; real idle animation runs only
+at the configured interval.

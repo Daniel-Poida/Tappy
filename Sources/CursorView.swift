@@ -13,7 +13,7 @@ struct CursorView: View {
             PointerFigure(position: state.position, style: settings.pointerStyle, size: settings.pointerSize,
                           tapping: state.isTapping, impact: state.impact, shadow: settings.shadowEnabled, reduceMotion: reduceMotion,
                           lean: state.lean, lowerOpacity: settings.armOpacity, extensionFraction: settings.armExtension,
-                          idleTime: state.idleTime, availableTopRoom: state.position.y)
+                          idleTime: state.idleTime, availableTopRoom: state.position.y, fingerWeights: state.fingerWeights)
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)

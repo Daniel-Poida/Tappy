@@ -7,7 +7,7 @@ final class PresentationShieldWindow: NSPanel {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 
-    init(screen: NSScreen, onTap: @escaping () -> Void) {
+    init(screen: NSScreen, onRelease: @escaping (PointerButton) -> Void = { _ in }, onTap: @escaping (PointerButton) -> Void) {
         super.init(contentRect: screen.frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.cursorWindow)) - 1)
         backgroundColor = .clear
@@ -17,23 +17,31 @@ final class PresentationShieldWindow: NSPanel {
         isReleasedWhenClosed = false
         ignoresMouseEvents = false
         collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
-        contentView = PresentationShieldView(frame: NSRect(origin: .zero, size: screen.frame.size), onTap: onTap)
+        contentView = PresentationShieldView(frame: NSRect(origin: .zero, size: screen.frame.size), onRelease: onRelease, onTap: onTap)
     }
 }
 
 final class PresentationShieldView: NSView {
-    let onTap: () -> Void
-    init(frame: NSRect, onTap: @escaping () -> Void) { self.onTap = onTap; super.init(frame: frame) }
+    let onTap: (PointerButton) -> Void
+    let onRelease: (PointerButton) -> Void
+    init(frame: NSRect, onRelease: @escaping (PointerButton) -> Void = { _ in }, onTap: @escaping (PointerButton) -> Void) {
+        self.onTap = onTap; self.onRelease = onRelease; super.init(frame: frame)
+    }
     required init?(coder: NSCoder) { nil }
     override var acceptsFirstResponder: Bool { false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func accessibilityPerformPress() -> Bool {
+        guard accessibilityRole() == .button else { return false }
+        onTap(.primary); onRelease(.primary)
+        return true
+    }
     override func hitTest(_ point: NSPoint) -> NSView? { bounds.contains(point) ? self : nil }
-    override func mouseDown(with event: NSEvent) { onTap() }
-    override func rightMouseDown(with event: NSEvent) { onTap() }
-    override func otherMouseDown(with event: NSEvent) { onTap() }
-    override func mouseUp(with event: NSEvent) {}
-    override func rightMouseUp(with event: NSEvent) {}
-    override func otherMouseUp(with event: NSEvent) {}
+    override func mouseDown(with event: NSEvent) { onTap(.primary) }
+    override func rightMouseDown(with event: NSEvent) { onTap(.secondary) }
+    override func otherMouseDown(with event: NSEvent) { onTap(.other) }
+    override func mouseUp(with event: NSEvent) { onRelease(.primary) }
+    override func rightMouseUp(with event: NSEvent) { onRelease(.secondary) }
+    override func otherMouseUp(with event: NSEvent) { onRelease(.other) }
     override func mouseDragged(with event: NSEvent) {}
     override func rightMouseDragged(with event: NSEvent) {}
     override func otherMouseDragged(with event: NSEvent) {}

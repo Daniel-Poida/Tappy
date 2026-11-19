@@ -1,5 +1,13 @@
 import SwiftUI
 import Combine
+import Cocoa
+
+enum PointerButton {
+    case primary, secondary, other
+    init(event: NSEvent) {
+        self = event.buttonNumber == 1 ? .secondary : event.buttonNumber == 0 ? .primary : .other
+    }
+}
 
 /// Monotonic-time click energy. It decays continuously after a click, even at rest.
 struct ClickDynamics {
@@ -33,6 +41,13 @@ final class CursorState: ObservableObject {
     @Published var burstVisible = false
     @Published var lean = -8.0
     @Published var idleTime: Double?
+    @Published private(set) var fingerWeights: [Double]?
+    var fingerPose: FingerPose? {
+        guard let fingerWeights else { return nil }
+        return FingerPose.allCases.max { fingerWeights[$0.rawValue] < fingerWeights[$1.rawValue] }
+    }
+    private var secondaryPressed = false
+    private var secondaryGesture = SecondaryFingerGesture()
     private var orientation = PointerOrientation()
     private var lastActivity = ProcessInfo.processInfo.systemUptime
     private var idlePreviewStart: TimeInterval?
@@ -50,7 +65,10 @@ final class CursorState: ObservableObject {
         if abs(lean - next) > 0.025 { lean = next }
     }
     func tick(at time: TimeInterval = ProcessInfo.processInfo.systemUptime, systemIdle: Double? = nil,
-              settings: TappySettings = .shared, reduceMotion: Bool = false) {
+              settings: TappySettings = .shared, reduceMotion: Bool = false, secondaryDown: Bool? = nil) {
+        if secondaryPressed, secondaryDown == false { release(button: .secondary, at: time) }
+        let nextFingers = secondaryGesture.weights(at: time)
+        if nextFingers != fingerWeights { fingerWeights = nextFingers }
         dynamics.decay(at: time)
         if abs(energy - dynamics.energy) > 0.005 { energy = dynamics.energy }
         if let start = idlePreviewStart, settings.idleEnabled, !reduceMotion {
@@ -74,11 +92,16 @@ final class CursorState: ObservableObject {
     }
 
     @discardableResult
-    func tap(settings: TappySettings) -> Double {
-        noteActivity()
-        energy = dynamics.record(at: ProcessInfo.processInfo.systemUptime)
+    func tap(settings: TappySettings, button: PointerButton = .primary,
+             at time: TimeInterval = ProcessInfo.processInfo.systemUptime, reduceMotion: Bool = false) -> Double {
+        noteActivity(at: time)
+        secondaryPressed = button == .secondary
+        if secondaryPressed { secondaryGesture.press(at: time, animated: settings.animateOnClick && !reduceMotion) }
+        else { secondaryGesture.release(at: time) }
+        fingerWeights = secondaryGesture.weights(at: time)
+        energy = dynamics.record(at: time)
         impact = (0.16 + 0.84 * energy) * settings.mood
-        guard settings.animateOnClick else { return energy }
+        guard settings.animateOnClick && !reduceMotion else { return energy }
         releaseWork?.cancel()
         burstWork?.cancel()
         burstVisible = false
@@ -98,6 +121,12 @@ final class CursorState: ObservableObject {
         return energy
     }
 
+    func release(button: PointerButton, at time: TimeInterval = ProcessInfo.processInfo.systemUptime) {
+        guard button == .secondary, secondaryPressed else { return }
+        secondaryPressed = false
+        secondaryGesture.release(at: time)
+    }
+
     func reset() {
         releaseWork?.cancel(); burstWork?.cancel()
         dynamics = ClickDynamics()
@@ -105,6 +134,7 @@ final class CursorState: ObservableObject {
         lean = -8
         noteActivity()
         isTapping = false; burstVisible = false; energy = 0; impact = 0
+        secondaryPressed = false; secondaryGesture.reset(); fingerWeights = nil
     }
 }
 

@@ -89,7 +89,9 @@ final class CursorOverlayWindow: NSWindow, ObservableObject {
 
     private func rebuildPresentationShields() {
         let next = NSScreen.screens.map { screen in
-            PresentationShieldWindow(screen: screen) { [weak self] in self?.tap() }
+            PresentationShieldWindow(screen: screen, onRelease: { [weak self] button in
+                self?.cursorState.release(button: button)
+            }) { [weak self] button in self?.tap(button: button) }
         }
         next.forEach { $0.orderFrontRegardless() }
         presentationShields.forEach { $0.orderOut(nil) }
@@ -109,9 +111,10 @@ final class CursorOverlayWindow: NSWindow, ObservableObject {
         }
     }
 
-    private func tap() {
+    private func tap(button: PointerButton = .primary) {
         updateCursorPosition()
-        let energy = cursorState.tap(settings: .shared)
+        let energy = cursorState.tap(settings: .shared, button: button,
+                                     reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
         SoundManager.shared.playKnock(energy: energy)
         surface.update(state: cursorState, settings: .shared)
     }
@@ -120,7 +123,8 @@ final class CursorOverlayWindow: NSWindow, ObservableObject {
             let moved = self?.updateCursorPosition() ?? false
             self?.systemCursor.refresh(cursorMoved: moved)
             self?.cursorState.tick(systemIdle: InputIdleTime.seconds,
-                                    reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+                                    reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+                                    secondaryDown: CGEventSource.buttonState(.combinedSessionState, button: .right))
             if let self { self.surface.update(state: self.cursorState, settings: .shared) }
         }
         timer.tolerance = 0.002
@@ -128,17 +132,25 @@ final class CursorOverlayWindow: NSWindow, ObservableObject {
         trackingTimer = timer
         // Mouse-only monitoring does not request keyboard/Accessibility access.
         let buttons: Set<NSEvent.EventType> = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+        let releases: Set<NSEvent.EventType> = [.leftMouseUp, .rightMouseUp, .otherMouseUp]
         let events: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown,
+            .leftMouseUp, .rightMouseUp, .otherMouseUp,
             .mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged, .scrollWheel]
         clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: events) { [weak self] event in
             guard let self else { return }
             self.reassertCursorAfterMouseEvent()
-            if buttons.contains(event.type), !self.presentationMode { self.tap() }
+            if !self.presentationMode {
+                if buttons.contains(event.type) { self.tap(button: PointerButton(event: event)) }
+                if releases.contains(event.type) { self.cursorState.release(button: PointerButton(event: event)) }
+            }
         }
         localMonitor = NSEvent.addLocalMonitorForEvents(matching: events) { [weak self] event in
             guard let self else { return event }
             self.reassertCursorAfterMouseEvent()
-            if buttons.contains(event.type), !self.presentationMode { self.tap() }
+            if !self.presentationMode {
+                if buttons.contains(event.type) { self.tap(button: PointerButton(event: event)) }
+                if releases.contains(event.type) { self.cursorState.release(button: PointerButton(event: event)) }
+            }
             return event
         }
     }

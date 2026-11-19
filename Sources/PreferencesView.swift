@@ -109,7 +109,10 @@ struct PreferencesView: View {
         .frame(width: 751, height: 727)
         .foregroundStyle(ink).background(palette.background)
         .preferredColorScheme(settings.theme.colorScheme)
-        .onReceive(timer) { _ in preview.tick(systemIdle: InputIdleTime.seconds, settings: settings, reduceMotion: reduceMotion) }
+        .onReceive(timer) { _ in
+            preview.tick(systemIdle: InputIdleTime.seconds, settings: settings, reduceMotion: reduceMotion,
+                         secondaryDown: CGEventSource.buttonState(.combinedSessionState, button: .right))
+        }
     }
     private var characterPicker: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -138,7 +141,6 @@ struct PreferencesView: View {
         }
     }
     private var previewStage: some View {
-        Button(action: previewTap) {
             ZStack {
                 GeometryReader { proxy in
                     HStack(spacing: 0) {
@@ -156,7 +158,7 @@ struct PreferencesView: View {
                               size: min(0.9, settings.pointerSize * 0.9), tapping: preview.isTapping,
                               impact: preview.impact, shadow: settings.shadowEnabled, reduceMotion: reduceMotion, lean: preview.lean,
                               lowerOpacity: settings.armOpacity, extensionFraction: settings.armExtension,
-                              idleTime: preview.idleTime, availableTopRoom: 18)
+                              idleTime: preview.idleTime, availableTopRoom: 18, fingerWeights: preview.fingerWeights)
                 VStack {
                     HStack {
                         if background != "Dark" { Text("LIGHT").foregroundStyle(Color.black.opacity(0.45)) }
@@ -171,8 +173,7 @@ struct PreferencesView: View {
 
             }.frame(width: 290, height: 185).clipShape(RoundedRectangle(cornerRadius: 19))
                 .overlay(RoundedRectangle(cornerRadius: 19).stroke(ink.opacity(0.12)))
-        }.buttonStyle(.plain).accessibilityLabel("Test pointer. Click repeatedly to increase energy.")
-            .accessibilityValue(preview.idleTime == nil ? "Ready" : "Idle animation playing")
+                .overlay(PointerPreviewInput(playing: preview.idleTime != nil, onTap: { previewTap(button: $0) }, onRelease: { preview.release(button: $0) }))
             .onContinuousHover { phase in
                 if case .active(let point) = phase {
                     preview.noteActivity(); preview.trackOrientation(at: point, canvas: CGSize(width: 290, height: 185))
@@ -180,7 +181,10 @@ struct PreferencesView: View {
             }
     }
     private func previewTap() {
-        let energy = preview.tap(settings: settings)
+        previewTap(button: .primary)
+    }
+    private func previewTap(button: PointerButton) {
+        let energy = preview.tap(settings: settings, button: button, reduceMotion: reduceMotion)
         if !overlay.isActive { SoundManager.shared.playKnock(energy: energy) }
     }
     private var moodLabel: String { ["Subtle", "Easygoing", "Playful", "Expressive", "Extra"][min(4, Int(settings.mood * 4.99))] }
@@ -203,5 +207,23 @@ struct PreferencesView: View {
             Slider(value: value, in: range).accessibilityLabel(title == "Size" ? "Pointer size" : title)
             Text(display).font(.system(size: 10, design: .monospaced)).lineLimit(1).minimumScaleFactor(0.8).frame(width: 58, alignment: .trailing)
         }
+    }
+}
+
+/// Native mouse callbacks preserve right-button identity in the preview as well
+/// as in the live overlay; SwiftUI's Button action only reports a primary tap.
+private struct PointerPreviewInput: NSViewRepresentable {
+    let playing: Bool
+    let onTap: (PointerButton) -> Void
+    let onRelease: (PointerButton) -> Void
+    func makeNSView(context: Context) -> PresentationShieldView {
+        let view = PresentationShieldView(frame: .zero, onRelease: onRelease, onTap: onTap)
+        view.setAccessibilityElement(true)
+        view.setAccessibilityRole(.button)
+        view.setAccessibilityLabel("Test pointer. Left-click or right-click to try each finger.")
+        return view
+    }
+    func updateNSView(_ view: PresentationShieldView, context: Context) {
+        view.setAccessibilityValue(playing ? "Idle animation playing" : "Ready")
     }
 }
