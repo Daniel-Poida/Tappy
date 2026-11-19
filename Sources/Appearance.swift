@@ -2,7 +2,7 @@ import SwiftUI
 import Cocoa
 
 enum AppVersion {
-    static let short = "1.4"
+    static let short = "1.4.1"
 }
 
 enum AppTheme: String, CaseIterable, Identifiable {

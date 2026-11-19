@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.1
+
+- Fix the system arrow appearing over Dock by temporarily registering a transparent system arrow while Tappy is active.
+- Restore the original cursor images on disable and quit through a separate restore helper; pipe EOF also handles an unexpected parent exit. Recover a leftover restore journal on launch.
+- Avoid repeated show/hide cycles when the transparent image is installed. Retain balanced Quartz hiding when registration is unavailable.
+- Verify Dock behaviour and normal cursor restoration manually; test helper reuse, acknowledgements and parent-exit cleanup.
+
 ## 1.4
 
 - Recover system cursor hiding over Dock and menus even when the visibility flag is stale: coalesced mouse-event refresh, movement polling and a bounded heartbeat, with one balanced hide request.

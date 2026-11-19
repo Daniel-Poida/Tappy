@@ -12,6 +12,9 @@ export SWIFTPM_MODULECACHE_OVERRIDE="$PWD/.build/ModuleCache"
 # Produce a universal executable for Apple Silicon and Intel Macs.
 for ARCH in arm64 x86_64; do
     swift build -c release --arch "$ARCH" --disable-sandbox --cache-path "$PWD/.build/package-cache"
+    swiftc -parse-as-library -O -module-cache-path "$PWD/.build/ModuleCache" \
+        -target "$ARCH-apple-macos13.0" -D TAPPY_CURSOR_GUARD Sources/SystemArrowGuard.swift \
+        -o "$PWD/.build/TappyCursorGuard-$ARCH"
 done
 ARM_BIN="$(swift build -c release --arch arm64 --show-bin-path --disable-sandbox)/$APP_NAME"
 INTEL_BIN="$(swift build -c release --arch x86_64 --show-bin-path --disable-sandbox)/$APP_NAME"
@@ -20,9 +23,12 @@ INTEL_BIN="$(swift build -c release --arch x86_64 --show-bin-path --disable-sand
 "$ARM_BIN" --export-assets "$PWD/Assets"
 iconutil -c icns "$PWD/Assets/Tappy.iconset" -o "$PWD/Assets/Tappy.icns"
 rm -rf "$APP_PATH"
-mkdir -p "$APP_PATH/Contents/MacOS" "$APP_PATH/Contents/Resources"
+mkdir -p "$APP_PATH/Contents/MacOS" "$APP_PATH/Contents/Resources" "$APP_PATH/Contents/Helpers"
 lipo -create "$ARM_BIN" "$INTEL_BIN" -output "$APP_PATH/Contents/MacOS/$APP_NAME"
 chmod +x "$APP_PATH/Contents/MacOS/$APP_NAME"
+lipo -create "$PWD/.build/TappyCursorGuard-arm64" "$PWD/.build/TappyCursorGuard-x86_64" \
+    -output "$APP_PATH/Contents/Helpers/TappyCursorGuard"
+codesign --force --sign - "$APP_PATH/Contents/Helpers/TappyCursorGuard"
 cp "Assets/$APP_NAME.icns" "$APP_PATH/Contents/Resources/$APP_NAME.icns"
 cp -R "$(dirname "$ARM_BIN")/Tappy_Tappy.bundle" "$APP_PATH/Contents/Resources/"
 
@@ -36,7 +42,7 @@ cat > "$APP_PATH/Contents/Info.plist" <<PLIST
     <key>CFBundleDisplayName</key><string>$APP_NAME</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>$APP_VERSION</string>
-    <key>CFBundleVersion</key><string>140</string>
+    <key>CFBundleVersion</key><string>141</string>
     <key>LSMinimumSystemVersion</key><string>13.0</string>
     <key>LSUIElement</key><true/>
     <key>NSHighResolutionCapable</key><true/>

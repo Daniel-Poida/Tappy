@@ -6,6 +6,12 @@ import SwiftUI
 // Standalone checks run with the macOS Command Line Tools, without requiring Xcode/XCTest.
 @main struct TappyChecks {
     @MainActor static func main() throws {
+        if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--guard-client-exit" {
+            let guardClient = SystemArrowGuard(helper: URL(fileURLWithPath: CommandLine.arguments[2]))
+            guard guardClient.start() else { exit(1) }
+            // Exit without Swift cleanup: exercise kernel pipe-EOF recovery.
+            withExtendedLifetime(guardClient) { exit(0) }
+        }
         var checks = 0
         func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
             guard condition() else { fatalError("FAIL: \(message)") }; checks += 1
@@ -252,6 +258,16 @@ import SwiftUI
         let systemCursor = SystemCursorController(backend: cursorBackend)
         systemCursor.setHidden(true)
         expect(cursorBackend.backgroundEnabled && !cursorBackend.visible && cursorBackend.depth == 1, "Background cursor control hides the system pointer")
+        expect(cursorBackend.arrowTransparent, "System arrow image is protected before hiding the cursor")
+        cursorBackend.reportHidden = true
+        let initialShows = cursorBackend.showCalls
+        for i in 0..<120 {
+            cursorBackend.dockForceShow()
+            systemCursor.refresh(force: true, cursorMoved: true, at: ProcessInfo.processInfo.systemUptime + Double(i) / 90)
+            expect(cursorBackend.arrowTransparent && cursorBackend.depth == 1, "A forced Dock show cannot expose the original arrow image")
+        }
+        expect(cursorBackend.showCalls == initialShows, "Dock tracking does not repeatedly show a correctly hidden cursor")
+        cursorBackend.reportHidden = false
         for i in 0..<100 { systemCursor.refresh(at: ProcessInfo.processInfo.systemUptime + Double(i) / 100) }
         expect(cursorBackend.hideCalls - cursorBackend.showCalls == 1 && cursorBackend.depth == 1, "Tracking keeps exactly one outstanding hide request")
         for _ in 0..<20 {
@@ -261,6 +277,7 @@ import SwiftUI
         }
         systemCursor.setHidden(false)
         expect(cursorBackend.visible && cursorBackend.depth == 0 && !cursorBackend.backgroundEnabled, "Disabling Tappy fully restores the system pointer")
+        expect(!cursorBackend.arrowTransparent, "Disabling Tappy restores the original arrow image")
         systemCursor.setHidden(false)
         expect(cursorBackend.showCalls == cursorBackend.hideCalls, "Repeated disable does not over-show the system cursor")
         cursorBackend.hideSucceeds = false
@@ -278,7 +295,9 @@ import SwiftUI
         let cleanupBackend = FakeCursorBackend()
         do { let controller = SystemCursorController(backend: cleanupBackend); controller.setHidden(true) }
         expect(cleanupBackend.depth == 0 && cleanupBackend.visible, "Controller cleanup restores its cursor request")
+        expect(!cleanupBackend.arrowTransparent, "Controller cleanup restores the original arrow image")
         let staleBackend = FakeCursorBackend()
+        staleBackend.arrowControlAvailable = false
         let staleController = SystemCursorController(backend: staleBackend)
         staleController.setHidden(true)
         staleBackend.visibilityAvailable = true
@@ -307,6 +326,40 @@ import SwiftUI
         expect(unknownBackend.depth == 1, "Unavailable visibility detection refreshes without accumulating hides")
         unknownController.setHidden(false)
         expect(unknownBackend.depth == 0, "Fallback hides remain balanced")
+        let fixtureRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: fixtureRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+        let fixture = fixtureRoot.appendingPathComponent("cursor-guard-fixture")
+        try """
+        #!/bin/sh
+        printf 'started\\n' >> "$0.starts"
+        printf '1'
+        /bin/cat > /dev/null
+        printf 'restored' > "$0.restored"
+        printf '2'
+
+        """.write(to: fixture, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: fixture.path)
+        let marker = fixture.appendingPathExtension("restored")
+        let lease = SystemArrowGuard(helper: fixture)
+        expect(lease.start() && lease.isActive, "Arrow guard waits for installation acknowledgement")
+        expect(lease.start(), "Repeated activation reuses the same restore owner")
+        let starts = try String(contentsOf: fixture.appendingPathExtension("starts"), encoding: .utf8)
+        expect(starts == "started\n", "Only one helper starts per activation")
+        expect(lease.stop(), "Disable waits for the restoration acknowledgement")
+        expect(FileManager.default.fileExists(atPath: marker.path), "Disable closes the lifetime pipe and restores the arrow")
+        try FileManager.default.removeItem(at: marker)
+        do { let cleanup = SystemArrowGuard(helper: fixture); expect(cleanup.start(), "Cleanup fixture starts") }
+        expect(FileManager.default.fileExists(atPath: marker.path), "Client destruction restores the arrow")
+        try FileManager.default.removeItem(at: marker)
+        let abrupt = Process()
+        abrupt.executableURL = URL(fileURLWithPath: CommandLine.arguments[0])
+        abrupt.arguments = ["--guard-client-exit", fixture.path]
+        try abrupt.run(); abrupt.waitUntilExit()
+        let deadline = Date().addingTimeInterval(2)
+        while !FileManager.default.fileExists(atPath: marker.path), Date() < deadline { Thread.sleep(forTimeInterval: 0.01) }
+        expect(abrupt.terminationStatus == 0 && FileManager.default.fileExists(atPath: marker.path),
+               "Parent exit without cleanup still restores through pipe EOF")
         print("PASS: \(checks) assertions — click dynamics, audio, characters, geometry and multi-display coordinates")
     }
 }
@@ -317,6 +370,8 @@ private final class FakeCursorBackend: CursorVisibilityBackend {
     var visibilityAvailable = true
     var reportHidden = false
     var backgroundEnabled = false
+    var arrowTransparent = false
+    var arrowControlAvailable = true
     var depth = 0
     var hideCalls = 0
     var showCalls = 0
@@ -324,6 +379,12 @@ private final class FakeCursorBackend: CursorVisibilityBackend {
     var showSucceeds = true
     var isVisible: Bool? { visibilityAvailable ? (reportHidden ? false : visible) : nil }
     func setBackgroundControl(_ enabled: Bool) -> Bool { backgroundEnabled = enabled; return true }
+    func setArrowTransparent(_ transparent: Bool) -> Bool {
+        guard arrowControlAvailable else { return false }
+        arrowTransparent = transparent
+        return true
+    }
+    func dockForceShow() { visible = true }
     func hide() -> Bool {
         guard hideSucceeds else { return false }
         hideCalls += 1; depth += 1; visible = false; return true

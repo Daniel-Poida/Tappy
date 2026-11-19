@@ -4,6 +4,7 @@ import Darwin
 protocol CursorVisibilityBackend: AnyObject {
     var isVisible: Bool? { get }
     func setBackgroundControl(_ enabled: Bool) -> Bool
+    func setArrowTransparent(_ transparent: Bool) -> Bool
     func hide() -> Bool
     func show() -> Bool
 }
@@ -16,6 +17,7 @@ final class SystemCursorController {
     private(set) var ownsHide = false
     private var lastCheck = -Double.infinity
     private var lastReassertion = -Double.infinity
+    private var protectsArrowImage = false
 
     init(backend: CursorVisibilityBackend = WindowServerCursorBackend()) { self.backend = backend }
 
@@ -28,16 +30,24 @@ final class SystemCursorController {
         guard force || time - lastCheck >= 1.0 / 120.0 else { return }
         lastCheck = time
         guard requestedHidden else {
-            if releaseHide() { _ = backend.setBackgroundControl(false) }
+            if releaseHide() {
+                _ = backend.setArrowTransparent(false)
+                protectsArrowImage = false
+                _ = backend.setBackgroundControl(false)
+            }
             return
         }
-        if force || !ownsHide { _ = backend.setBackgroundControl(true) }
+        if force || !ownsHide {
+            _ = backend.setBackgroundControl(true)
+            protectsArrowImage = backend.setArrowTransparent(true)
+        }
         let visible = backend.isVisible
-        // Dock/menu-bar ownership can restore the arrow while Quartz still
-        // reports "hidden". Movement and a bounded heartbeat repair that state
-        // independently of the visibility flag, including after the mouse stops.
+        // Dock may force a visible arrow despite a hidden Quartz flag. A guarded
+        // transparent system image covers that path; retain the balanced hide
+        // fallback when image registration is unavailable.
         let heartbeatDue = time - lastReassertion >= 0.2
-        guard !ownsHide || visible == true || force || cursorMoved || heartbeatDue else { return }
+        let needsFallback = !protectsArrowImage && (force || cursorMoved || heartbeatDue)
+        guard !ownsHide || visible == true || needsFallback else { return }
         // Never accumulate hide calls in the tracking loop. Release our previous
         // request before reasserting it; a failed release remains owned for retry.
         guard releaseHide() else { return }
@@ -52,7 +62,10 @@ final class SystemCursorController {
         return true
     }
     deinit {
-        if releaseHide() { _ = backend.setBackgroundControl(false) }
+        if releaseHide() {
+            _ = backend.setArrowTransparent(false)
+            _ = backend.setBackgroundControl(false)
+        }
     }
 }
 
@@ -69,6 +82,7 @@ final class WindowServerCursorBackend: CursorVisibilityBackend {
     private let connection: ConnectionID?
     private let setProperty: SetProperty?
     private let cursorVisible: CursorVisible?
+    private let arrowGuard = SystemArrowGuard()
 
     init() {
         let library = dlopen("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics", RTLD_LAZY | RTLD_LOCAL)
@@ -93,5 +107,10 @@ final class WindowServerCursorBackend: CursorVisibilityBackend {
     }
     func hide() -> Bool { CGDisplayHideCursor(CGMainDisplayID()) == .success }
     func show() -> Bool { CGDisplayShowCursor(CGMainDisplayID()) == .success }
+    func setArrowTransparent(_ transparent: Bool) -> Bool {
+        if transparent { return arrowGuard.start() }
+        arrowGuard.stop()
+        return true
+    }
     deinit { if let handle { dlclose(handle) } }
 }

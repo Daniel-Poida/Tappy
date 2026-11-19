@@ -14,7 +14,8 @@ enum TappyMain {
         let current = NSRunningApplication.current
         let identifier = Bundle.main.bundleIdentifier ?? "com.example.tappy"
         let existing = NSRunningApplication.runningApplications(withBundleIdentifier: identifier).first { app in
-            guard app.processIdentifier != current.processIdentifier, !app.isTerminated else { return false }
+            guard app.processIdentifier != current.processIdentifier, !app.isTerminated,
+                  app.executableURL?.lastPathComponent != "TappyCursorGuard" else { return false }
             let otherDate = app.launchDate ?? .distantPast, ownDate = current.launchDate ?? .distantFuture
             return otherDate < ownDate || (otherDate == ownDate && app.processIdentifier < current.processIdentifier)
         }
@@ -43,6 +44,7 @@ struct TappyApp: App {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        SystemArrowGuard.recoverIfNeeded()
         // Register defaults before menu observers can receive their notification.
         // Accessing the lazy singleton from updateMenu during registration recurses.
         let settings = TappySettings.shared
