@@ -69,6 +69,17 @@ enum SoundSynthesis {
             case .spell:
                 let phase = 2 * Double.pi * (300 * t + 2500 * t * t)
                 sample = (noise * 0.3 * exp(-t * 30) + sin(phase) * exp(-t * 20) * 0.55) * min(1, t * 180)
+            case .witch:
+                let phase = 2 * Double.pi * (210 * t - 210 * t * t + 0.65 * sin(2 * .pi * 22 * t))
+                sample = (sin(phase) * 0.47 + sin(phase * 1.51) * 0.19 + noise * 0.18) * exp(-t * 17) * min(1, t * 140)
+            case .sword:
+                sample = (sin(2 * .pi * 980 * t) * 0.45 + sin(2 * .pi * 2170 * t) * 0.27 + sin(2 * .pi * 3410 * t) * 0.13) * exp(-t * 24) + noise * exp(-t * 150) * 0.1
+            case .redSaber:
+                let phase = 2 * Double.pi * (105 * t + 1450 * t * t)
+                sample = (sin(phase) * 0.5 + sin(phase * 2) * 0.18 + noise * 0.2) * exp(-t * 19) * min(1, t * 170)
+            case .greenSaber:
+                let phase = 2 * Double.pi * (370 * t - 600 * t * t)
+                sample = (sin(phase) * 0.45 + sin(phase * 1.98) * 0.2 + noise * 0.13) * exp(-t * 17) * min(1, t * 160)
             }
             let attack = min(1, t / 0.0015)
             let tail = min(1, (Double(count - i) / Double(sampleRate)) / 0.01)

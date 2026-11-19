@@ -25,6 +25,18 @@ struct TapBurst: View {
     var visible: Bool
     var style: PointerStyle = .classic
     var reduceMotion = false
+    static func accent(_ style: PointerStyle) -> CGColor {
+        switch style {
+        case .moonWand: return NSColor.systemPink.cgColor
+        case .starWand: return NSColor.systemYellow.cgColor
+        case .finnSword: return NSColor.systemBlue.cgColor
+        case .wizardWand: return NSColor.systemCyan.cgColor
+        case .witch: return NSColor.systemPurple.cgColor
+        case .redLightsaber: return NSColor.systemRed.cgColor
+        case .greenLightsaber: return NSColor.systemGreen.cgColor
+        case .classic: return CGColor(red: 0.45, green: 0.93, blue: 0.74, alpha: 1)
+        }
+    }
     static func draw(in context: CGContext, position: CGPoint, impact: Double, style: PointerStyle, opacity: Double) {
         guard opacity > 0 else { return }
         context.saveGState()
@@ -32,7 +44,7 @@ struct TapBurst: View {
         context.translateBy(x: position.x, y: position.y)
         let scale = 0.6 + 0.4 * opacity
         context.scaleBy(x: scale, y: scale)
-        let accent: CGColor = style == .moonWand ? NSColor.systemPink.cgColor : style == .starWand ? NSColor.systemYellow.cgColor : style == .wizardWand ? NSColor.systemCyan.cgColor : CGColor(red: 0.45, green: 0.93, blue: 0.74, alpha: 1)
+        let accent = Self.accent(style)
         for i in 0..<(7 + Int(impact * 6)) {
             let angle = Double(i) / Double(7 + Int(impact * 6)) * .pi * 2
             let inner = 13 + impact * 7
@@ -44,7 +56,7 @@ struct TapBurst: View {
                 context.setStrokeColor(color); context.setLineWidth(width)
                 context.move(to: a); context.addLine(to: b); context.strokePath()
             }
-            if style != .classic && i % 2 == 0 {
+            if !style.isFingerHand && i % 2 == 0 {
                 let star = PointerGeometry.star(center: CGPoint(x: cos(angle) * (outer + 8), y: sin(angle) * (outer + 8)), radius: 3 + impact * 4, points: 4)
                 context.addPath(star.cgPath); context.setStrokeColor(NSColor.white.cgColor); context.setLineWidth(3); context.strokePath()
                 context.addPath(star.cgPath); context.setFillColor(accent); context.fillPath()
@@ -55,7 +67,7 @@ struct TapBurst: View {
     var body: some View {
         Canvas { context, size in
             let center = CGPoint(x: size.width / 2, y: size.height / 2)
-            let accent: Color = style == .moonWand ? .pink : style == .starWand ? .yellow : style == .wizardWand ? .cyan : Color(red: 0.45, green: 0.93, blue: 0.74)
+            let accent = Color(cgColor: Self.accent(style))
             let count = 7 + Int(impact * 6)
             for i in 0..<count {
                 let angle = Double(i) / Double(count) * .pi * 2
@@ -67,7 +79,7 @@ struct TapBurst: View {
                 context.stroke(ray, with: .color(.white), style: StrokeStyle(lineWidth: 7, lineCap: .round))
                 context.stroke(ray, with: .color(Color(red: 0.12, green: 0.15, blue: 0.18)), style: StrokeStyle(lineWidth: 4.5, lineCap: .round))
                 context.stroke(ray, with: .color(impact > 0.8 ? .yellow : accent), style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                if style != .classic && i % 2 == 0 {
+                if !style.isFingerHand && i % 2 == 0 {
                     let star = PointerGeometry.star(center: CGPoint(x: center.x + cos(angle) * (outer + 8), y: center.y + sin(angle) * (outer + 8)), radius: 3 + impact * 4, points: 4)
                     context.stroke(star, with: .color(.white), lineWidth: 3)
                     context.fill(star, with: .color(accent))

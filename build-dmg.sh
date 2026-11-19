@@ -14,17 +14,21 @@ trap 'rm -rf "$STAGING_DIR"' EXIT
 cp -R "$APP_PATH" "$STAGING_DIR/"
 ln -s /Applications "$STAGING_DIR/Applications"
 cat > "$STAGING_DIR/Start here.txt" <<'README'
-TAPPY 1.3.4 — POLISHED POINTERS
+TAPPY 1.4 — POLISHED POINTERS
 
 Drag Tappy into Applications, then open it.
 Choose your character and try clicking the preview.
 Enable Tappy with the switch or Control + Option + P.
 
-Four characters, four sounds:
+Eight characters, eight sounds (two rows):
 • Classic cartoon glove — Cartoon knock
 • Sailor Moon inspired wand — Moon chime
 • Princess Star inspired wand — Star sparkle
 • Wizard's magic wand — Magic swish
+• Horror witch hand — Witch whisper
+• Finn's silver sword with blue gem — Adventure clang
+• Red lightsaber — Dark saber
+• Green lightsaber — Force swish
 
 Click faster for a bigger cartoon reaction and a louder sound.
 Adjust personality, pointer size, forearm length and opacity, shadow and master volume.

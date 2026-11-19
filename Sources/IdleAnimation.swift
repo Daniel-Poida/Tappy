@@ -31,7 +31,7 @@ enum InputIdleTime {
 struct IdlePose {
     let cycle: Double
     init(time: Double) { cycle = max(0, time) }
-    static func duration(for style: PointerStyle) -> Double { style == .classic ? 2.6 : 1.15 }
+    static func duration(for style: PointerStyle) -> Double { style.isFingerHand ? 2.6 : 1.15 }
     private var tossCycle: Double { cycle }
     /// A complete toss includes anticipation, release, one revolution, and a catch.
     var flight: Double {
@@ -64,7 +64,7 @@ struct IdlePose {
 }
 
 enum IdleImages {
-    static let names = ["ClassicWave", "ClassicFist", "Catch", "MoonWandObject", "StarWandObject", "WizardWandObject"]
+    static let names = ["ClassicWave", "ClassicFist", "Catch", "MoonWandObject", "StarWandObject", "WizardWandObject", "WitchWave", "WitchFist", "FinnSwordObject", "RedLightsaberObject", "GreenLightsaberObject"]
     static let images: [String: NSImage] = {
         var result: [String: NSImage] = [:]
         for name in names {
@@ -86,11 +86,12 @@ enum IdlePointerArtwork {
     static func draw(style: PointerStyle, time: Double, in context: CGContext, availableTopRoom: Double) {
         let pose = IdlePose(time: time)
         guard let normal = PointerImages.bitmaps[style] else { return }
-        if style == .classic {
+        if style.isFingerHand {
+            let prefix = style == .witch ? "Witch" : "Classic"
             let weights = pose.fidgetWeights
             PointerBitmap.draw(normal, in: context, opacity: weights[0], clip: PointerGeometry.gloveClip(style))
-            if let wave = IdleImages.bitmaps["ClassicWave"] { PointerBitmap.draw(wave, in: context, opacity: weights[1], clip: PointerGeometry.gloveClip(style)) }
-            if let fist = IdleImages.bitmaps["ClassicFist"] { PointerBitmap.draw(fist, in: context, opacity: weights[2], clip: PointerGeometry.gloveClip(style)) }
+            if let wave = IdleImages.bitmaps[prefix + "Wave"] { PointerBitmap.draw(wave, in: context, opacity: weights[1], clip: PointerGeometry.gloveClip(style)) }
+            if let fist = IdleImages.bitmaps[prefix + "Fist"] { PointerBitmap.draw(fist, in: context, opacity: weights[2], clip: PointerGeometry.gloveClip(style)) }
         } else {
             let mix = pose.handMix
             PointerBitmap.draw(normal, in: context, opacity: 1 - mix, clip: PointerGeometry.gloveClip(style))
@@ -104,6 +105,7 @@ enum IdlePointerArtwork {
                 context.translateBy(x: 50, y: 65 - lift)
                 context.rotate(by: pose.rotation * .pi / 180)
                 context.translateBy(x: -50, y: -65)
+                context.clip(to: CGRect(x: 25, y: -100, width: 50, height: 280))
                 PointerBitmap.draw(object, in: context)
                 context.restoreGState()
                 context.translateBy(x: PointerGeometry.wrist(style).x - 48.5, y: PointerGeometry.cuffBottom(style) - 127.5)

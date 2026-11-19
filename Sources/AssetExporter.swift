@@ -27,16 +27,20 @@ struct PointerContactSheet: View {
                 Text("tappy").font(.system(size: 42, weight: .heavy, design: .rounded))
                 Text("\(AppVersion.short) / POLISHED POINTERS").font(.system(size: 12, weight: .bold, design: .monospaced)).tracking(2)
             }
-            Text("Four characters. Every click, a little louder.").font(.system(size: 17)).foregroundStyle(.secondary)
-            HStack(spacing: 16) {
-                ForEach(PointerStyle.allCases) { style in
-                    VStack(spacing: 14) {
-                        ZStack {
-                            HStack(spacing: 0) { Color(red: 0.91, green: 0.92, blue: 0.88); Color(red: 0.12, green: 0.16, blue: 0.19) }
-                            PointerFigure(position: CGPoint(x: 96, y: 34), style: style, size: 1.15)
-                        }.frame(width: 205, height: 244).clipShape(RoundedRectangle(cornerRadius: 20))
-                        Text(style.title).font(.system(size: 16, weight: .bold))
-                        Text(style.sound.rawValue).font(.system(size: 12)).foregroundStyle(.secondary)
+            Text("Eight characters. Every click, a little louder.").font(.system(size: 17)).foregroundStyle(.secondary)
+            VStack(spacing: 24) {
+                ForEach(PointerStyle.rows.indices, id: \.self) { row in
+                    HStack(spacing: 16) {
+                        ForEach(PointerStyle.rows[row]) { style in
+                            VStack(spacing: 14) {
+                                ZStack {
+                                    HStack(spacing: 0) { Color(red: 0.91, green: 0.92, blue: 0.88); Color(red: 0.12, green: 0.16, blue: 0.19) }
+                                    PointerFigure(position: CGPoint(x: 96, y: 34), style: style, size: 1.15)
+                                }.frame(width: 205, height: 244).clipShape(RoundedRectangle(cornerRadius: 20))
+                                Text(style.title).font(.system(size: 16, weight: .bold))
+                                Text(style.sound.rawValue).font(.system(size: 12)).foregroundStyle(.secondary)
+                            }
+                        }
                     }
                 }
             }
@@ -51,7 +55,7 @@ struct IdleContactSheet: View {
             ForEach(PointerStyle.allCases) { style in
                 HStack(spacing: 12) {
                     Text(style.title).font(.system(size: 14, weight: .medium)).frame(width: 90)
-                    ForEach(style == .classic ? [0.2, 0.8, 1.5, 2.35] : [0.1, 0.48, 0.7, 1.0], id: \.self) { time in
+                    ForEach(style.isFingerHand ? [0.2, 0.8, 1.5, 2.35] : [0.1, 0.48, 0.7, 1.0], id: \.self) { time in
                         ZStack(alignment: .topLeading) {
                             Color(nsColor: .controlBackgroundColor)
                             PointerFigure(position: CGPoint(x: 82, y: 60), style: style, lowerOpacity: 0.2,
@@ -136,7 +140,7 @@ struct TapContactSheet: View {
             NSApp.appearance = theme.appearance
             let settings = TappySettings(defaults: ArtworkPreviewDefaults())
             settings.theme = theme
-            settings.pointerStyle = theme == .light ? .classic : .starWand
+            settings.pointerStyle = theme == .light ? .witch : .greenLightsaber
             let overlay = CursorOverlayWindow()
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 751, height: 727),
                                   styleMask: [.borderless], backing: .buffered, defer: false)

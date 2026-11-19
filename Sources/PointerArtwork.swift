@@ -9,17 +9,21 @@ enum PointerGeometry {
         case .moonWand: return CGPoint(x: 50, y: 1.9)
         case .starWand: return CGPoint(x: 50, y: 2.4)
         case .wizardWand: return CGPoint(x: 50, y: 4.1)
+        case .witch: return CGPoint(x: 57.5, y: 4)
+        case .finnSword: return CGPoint(x: 50, y: 2.7)
+        case .redLightsaber, .greenLightsaber: return CGPoint(x: 50, y: 5.2)
         }
     }
     static func wrist(_ style: PointerStyle) -> CGPoint {
-        CGPoint(x: style == .classic ? 49.5 : style == .wizardWand ? 48.5 : 50, y: wristRim(style) - 2)
+        CGPoint(x: style == .classic ? 49.5 : style == .witch ? 49.3 : [.wizardWand, .finnSword, .redLightsaber, .greenLightsaber].contains(style) ? 48.5 : 50, y: wristRim(style) - 2)
     }
     /// Clip at the cuff, before the straight wrist painted into each source PNG.
     static func cuffBottom(_ style: PointerStyle) -> CGFloat {
         switch style {
         case .classic: return 123.5
         case .moonWand: return 128
-        case .starWand, .wizardWand: return 127.5
+        case .starWand, .wizardWand, .finnSword, .redLightsaber, .greenLightsaber: return 127.5
+        case .witch: return 130
         }
     }
     static func wristRim(_ style: PointerStyle) -> CGFloat {
@@ -27,7 +31,8 @@ enum PointerGeometry {
         case .classic: return 117.5
         case .moonWand: return 127
         case .starWand: return 126.3
-        case .wizardWand: return 126.8
+        case .wizardWand, .finnSword, .redLightsaber, .greenLightsaber: return 126.8
+        case .witch: return 119.5
         }
     }
     static func gloveClip(_ style: PointerStyle) -> Path {
@@ -40,7 +45,7 @@ enum PointerGeometry {
         path.addRect(CGRect(x: center + half, y: wristRim(style), width: 120 - center - half, height: cuffBottom(style) - wristRim(style)))
         return path
     }
-    static func wristWidth(_ style: PointerStyle) -> CGFloat { style == .classic ? 15.8 : style == .wizardWand ? 12.5 : 10.2 }
+    static func wristWidth(_ style: PointerStyle) -> CGFloat { style.isFingerHand ? 15.8 : [.wizardWand, .finnSword, .redLightsaber, .greenLightsaber].contains(style) ? 12.5 : 10.2 }
     static func star(center: CGPoint, radius: CGFloat, points: Int = 5) -> Path {
         var p = Path()
         for i in 0..<(points * 2) {
@@ -81,7 +86,7 @@ enum PointerGeometry {
 
 enum PointerImages {
     static func filename(_ style: PointerStyle) -> String {
-        switch style { case .classic: return "Classic"; case .moonWand: return "MoonWand"; case .starWand: return "StarWand"; case .wizardWand: return "WizardWand" }
+        switch style { case .classic: return "Classic"; case .moonWand: return "MoonWand"; case .starWand: return "StarWand"; case .wizardWand: return "WizardWand"; case .witch: return "Witch"; case .finnSword: return "FinnSword"; case .redLightsaber: return "RedLightsaber"; case .greenLightsaber: return "GreenLightsaber" }
     }
     static let images: [PointerStyle: NSImage] = {
         var result: [PointerStyle: NSImage] = [:]

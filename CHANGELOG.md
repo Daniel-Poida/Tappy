@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4
+
+- Add a horror witch hand, Finn's silver sword with blue gem, and red and green lightsabers as a second four-character row.
+- Keep four digits, native rendering, cuff alignment, light/dark readability and the original first-row characters.
+- Add four distinct synthesized click sounds, style-specific impact colours, witch finger poses and independent sword/saber idle layers.
+- Fit all eight cards and the preview into the existing settings window without scrolling; retain all sliders on the right.
+
 ## 1.3.4
 
 - Draw the live cursor on one native AppKit surface and clear its complete transparent backing before every frame, preventing retained copies when size and other settings change.

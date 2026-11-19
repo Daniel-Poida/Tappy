@@ -28,9 +28,13 @@ import SwiftUI
         expect(loud > quiet * 2 && loud <= 0.6, "Energy increases loudness within master volume")
         expect(SoundManager.gain(energy: 1, volume: 0, mood: 1) == 0, "Master mute works")
         expect(SoundManager.gain(energy: 0, volume: 0.6, mood: 1) == quiet, "Quiet clicks return to baseline")
-        expect(PointerStyle.allCases.count == 4, "Exactly four characters")
-        expect(Set(PointerStyle.allCases.map { $0.sound.rawValue }).count == 4, "Every hand has its own sound")
+        expect(PointerStyle.allCases.count == 8, "Exactly eight characters")
+        expect(Set(PointerStyle.allCases.map { $0.sound.rawValue }).count == 8, "Every hand has its own sound")
         expect(PointerStyle(rawValue: "Cat paw") == nil && PointerStyle(rawValue: "Middle child") == nil, "Old characters removed")
+        expect(PointerStyle.rows == [[.classic, .moonWand, .starWand, .wizardWand], [.witch, .finnSword, .redLightsaber, .greenLightsaber]],
+               "New characters occupy the second row in the requested order")
+        expect(PointerStyle.rows.flatMap { $0 } == PointerStyle.allCases, "Every character appears once in the picker")
+        for style in PointerStyle.allCases { expect(PointerStyle(rawValue: style.rawValue) == style, "Character selection can be restored from saved settings") }
         var sounds = Set<Data>()
         for style in TapSound.allCases {
             let data = SoundSynthesis.wav(style: style)
@@ -45,7 +49,7 @@ import SwiftUI
             expect(peak > 5000 && peak < Int(Int16.max), "Sound is audible and not clipped")
             sounds.insert(data)
         }
-        expect(sounds.count == 4, "Sound waveforms are distinct")
+        expect(sounds.count == 8, "Sound waveforms are distinct")
         let left = CGRect(x: -1920, y: 0, width: 1920, height: 1080)
         expect(CursorOverlayWindow.localPosition(CGPoint(x: -1000, y: 700), frame: left) == CGPoint(x: 920, y: 380), "Display left of main screen")
         let above = CGRect(x: 0, y: 1080, width: 2560, height: 1440)
@@ -146,7 +150,7 @@ import SwiftUI
         }
         let reused = frameContext()
         for step in 0..<36 {
-            let style = PointerStyle.allCases[step % 4]
+            let style = PointerStyle.allCases[step % PointerStyle.allCases.count]
             let frame = CursorOverlayFrame(figure: PointerFigure(position: CGPoint(x: 160 + step % 3 * 30, y: 20),
                 style: style, size: step % 2 == 0 ? 1.6 : 0.65, impact: 1,
                 shadow: step % 3 != 0, lean: step % 2 == 0 ? -28 : 30,

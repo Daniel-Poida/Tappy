@@ -114,20 +114,24 @@ struct PreferencesView: View {
     private var characterPicker: some View {
         VStack(alignment: .leading, spacing: 10) {
             sectionTitle("01", "Pick your character")
-            HStack(spacing: 6) {
-                ForEach(PointerStyle.allCases) { style in
-                    Button {
-                        settings.pointerStyle = style
-                        preview.reset(); previewTap()
-                    } label: {
-                        VStack(spacing: 4) {
-                            PointerArtwork(style: style, shadow: false).frame(width: 44, height: 62)
-                            Text(style.title).font(.system(size: 9, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8)
-                        }.frame(maxWidth: .infinity).padding(.vertical, 8)
-                            .background(settings.pointerStyle == style ? Color.accentColor.opacity(0.12) : palette.card, in: RoundedRectangle(cornerRadius: 11))
-                            .overlay(RoundedRectangle(cornerRadius: 11).stroke(settings.pointerStyle == style ? Color.accentColor : ink.opacity(0.12), lineWidth: settings.pointerStyle == style ? 2 : 1))
-                    }.buttonStyle(.plain).accessibilityLabel(style.title)
-                        .accessibilityAddTraits(settings.pointerStyle == style ? .isSelected : [])
+            VStack(spacing: 6) {
+                ForEach(PointerStyle.rows.indices, id: \.self) { row in
+                    HStack(spacing: 6) {
+                        ForEach(PointerStyle.rows[row]) { style in
+                            Button {
+                                settings.pointerStyle = style
+                                preview.reset(); previewTap()
+                            } label: {
+                                VStack(spacing: 4) {
+                                    PointerArtwork(style: style, shadow: false).frame(width: 44, height: 62)
+                                    Text(style.title).font(.system(size: 9, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8)
+                                }.frame(maxWidth: .infinity).padding(.vertical, 8)
+                                    .background(settings.pointerStyle == style ? Color.accentColor.opacity(0.12) : palette.card, in: RoundedRectangle(cornerRadius: 11))
+                                    .overlay(RoundedRectangle(cornerRadius: 11).stroke(settings.pointerStyle == style ? Color.accentColor : ink.opacity(0.12), lineWidth: settings.pointerStyle == style ? 2 : 1))
+                            }.buttonStyle(.plain).accessibilityLabel(style == .classic ? style.title : style.rawValue)
+                                .accessibilityAddTraits(settings.pointerStyle == style ? .isSelected : [])
+                        }
+                    }
                 }
             }
             Text(settings.pointerStyle.subtitle).font(.system(size: 11)).foregroundStyle(.secondary)
@@ -147,12 +151,12 @@ struct PreferencesView: View {
                         }
                     }.fill(Color.gray.opacity(0.25))
                 }
-                TapBurst(impact: preview.impact, visible: preview.burstVisible, style: settings.pointerStyle).position(x: 137, y: 55)
-                PointerFigure(position: CGPoint(x: 137, y: 55), style: settings.pointerStyle,
-                              size: min(1.3, settings.pointerSize * 1.1), tapping: preview.isTapping,
+                TapBurst(impact: preview.impact, visible: preview.burstVisible, style: settings.pointerStyle).position(x: 137, y: 18)
+                PointerFigure(position: CGPoint(x: 137, y: 18), style: settings.pointerStyle,
+                              size: min(0.9, settings.pointerSize * 0.9), tapping: preview.isTapping,
                               impact: preview.impact, shadow: settings.shadowEnabled, reduceMotion: reduceMotion, lean: preview.lean,
                               lowerOpacity: settings.armOpacity, extensionFraction: settings.armExtension,
-                              idleTime: preview.idleTime, availableTopRoom: 55)
+                              idleTime: preview.idleTime, availableTopRoom: 18)
                 VStack {
                     HStack {
                         if background != "Dark" { Text("LIGHT").foregroundStyle(Color.black.opacity(0.45)) }
@@ -165,13 +169,13 @@ struct PreferencesView: View {
                         .background(.regularMaterial, in: Capsule())
                 }.padding(16)
 
-            }.frame(width: 290, height: 275).clipShape(RoundedRectangle(cornerRadius: 19))
+            }.frame(width: 290, height: 185).clipShape(RoundedRectangle(cornerRadius: 19))
                 .overlay(RoundedRectangle(cornerRadius: 19).stroke(ink.opacity(0.12)))
         }.buttonStyle(.plain).accessibilityLabel("Test pointer. Click repeatedly to increase energy.")
             .accessibilityValue(preview.idleTime == nil ? "Ready" : "Idle animation playing")
             .onContinuousHover { phase in
                 if case .active(let point) = phase {
-                    preview.noteActivity(); preview.trackOrientation(at: point, canvas: CGSize(width: 290, height: 275))
+                    preview.noteActivity(); preview.trackOrientation(at: point, canvas: CGSize(width: 290, height: 185))
                 }
             }
     }

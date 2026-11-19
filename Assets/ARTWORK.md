@@ -67,3 +67,15 @@ Source PNGs retain their original pixels. Rendering preserves each curved cuff w
 ## Version 1.3.4 live surface
 
 The live cursor uses `CursorOverlayView`, a native AppKit surface. It clears its entire transparent frame before calling the same CoreGraphics figure renderer used by the SwiftUI previews. Settings are sampled once per frame; previous size/style layers are never retained. Native tap timing preserves squash, hold, spring rebound and rapid-click interruption. Existing PNGs and cuff attachments are unchanged.
+
+## Version 1.4 second character row
+
+New production PNGs in `Sources/Resources/Hands/`: `Witch.png`, `FinnSword.png`, `RedLightsaber.png`, `GreenLightsaber.png`. New idle layers in `Sources/Resources/Hands/Idle/`: `WitchWave.png`, `WitchFist.png`, `FinnSwordObject.png`, `RedLightsaberObject.png`, `GreenLightsaberObject.png`. All were generated with the built-in image_gen tool with transparent_background enabled and original alpha preserved.
+
+The classic glove and wizard glove were used as style and attachment references. The witch uses olive skin, black hooked nails and a plum ragged sleeve; every hand has exactly four digits. The final Finn sword follows the user-supplied reference: silver blade with a grey central ridge, integrated oval guard containing a round blue gem, thin silver grip and a white pear-shaped pommel. The held and independent idle sprites use this same design. Lightsabers retain separate red and green glows.
+
+Full prompt sets: [production character and idle prompts](New-characters-prompts.json), [Finn sword correction prompts](Finn-sword-revision-prompts.json).
+
+The original characters remain in row one. The second row is Witch, Finn sword, Red saber, Green saber. Production geometry clips baked wrists at each cuff opening; generated prop layers are clipped to their object region during tosses.
+
+Witch anatomy was corrected using the classic glove poses as references: folded fingers curl into the hidden palm, without nails hanging over the back of the hand. A second refinement made the knuckles smaller and more angular. The wave has exactly two extended fingers, one folded finger and one thumb; the fist has three folded fingers and one thumb. The cuff, wrist attachment and alpha remain aligned.
