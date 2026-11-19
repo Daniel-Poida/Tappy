@@ -10,6 +10,7 @@ final class CursorOverlayWindow: NSWindow, ObservableObject {
     private var trackingTimer: Timer?
     private var clickMonitor: Any?
     private var localMonitor: Any?
+    private var cursorRefreshPending = false
     private var presentationShields: [PresentationShieldWindow] = []
     private let systemCursor = SystemCursorController()
     var onChange: (() -> Void)?
@@ -116,8 +117,8 @@ final class CursorOverlayWindow: NSWindow, ObservableObject {
     }
     private func startTracking() {
         let timer = Timer(timeInterval: 1.0 / 90, repeats: true) { [weak self] _ in
-            self?.updateCursorPosition()
-            self?.systemCursor.refresh()
+            let moved = self?.updateCursorPosition() ?? false
+            self?.systemCursor.refresh(cursorMoved: moved)
             self?.cursorState.tick(systemIdle: InputIdleTime.seconds,
                                     reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
             if let self { self.surface.update(state: self.cursorState, settings: .shared) }
@@ -125,19 +126,43 @@ final class CursorOverlayWindow: NSWindow, ObservableObject {
         timer.tolerance = 0.002
         RunLoop.main.add(timer, forMode: .common)
         trackingTimer = timer
-        // Mouse-only monitors work without requesting keyboard monitoring permissions.
-        clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] _ in
-            guard self?.presentationMode == false else { return }; self?.tap()
+        // Mouse-only monitoring does not request keyboard/Accessibility access.
+        let buttons: Set<NSEvent.EventType> = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+        let events: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown,
+            .mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged, .scrollWheel]
+        clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: events) { [weak self] event in
+            guard let self else { return }
+            self.reassertCursorAfterMouseEvent()
+            if buttons.contains(event.type), !self.presentationMode { self.tap() }
         }
-        localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] event in
-            guard self?.presentationMode == false else { return event }; self?.tap(); return event
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: events) { [weak self] event in
+            guard let self else { return event }
+            self.reassertCursorAfterMouseEvent()
+            if buttons.contains(event.type), !self.presentationMode { self.tap() }
+            return event
         }
     }
-    private func updateCursorPosition() {
+    private func reassertCursorAfterMouseEvent() {
+        guard isActive, !cursorRefreshPending else { return }
+        cursorRefreshPending = true
+        // Coalesce events and reassert after the current cursor-owner update,
+        // without showing a second frame or accumulating hide requests.
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.cursorRefreshPending = false
+            guard self.isActive else { return }
+            self.systemCursor.refresh(force: true)
+        }
+    }
+
+    @discardableResult private func updateCursorPosition() -> Bool {
         let point = NSEvent.mouseLocation
-        guard let screen = NSScreen.screens.first(where: { NSMouseInRect(point, $0.frame, false) }) ?? NSScreen.main else { return }
+        guard let screen = NSScreen.screens.first(where: { NSMouseInRect(point, $0.frame, false) }) ?? NSScreen.main else { return false }
+        let next = Self.localPosition(point, frame: screen.frame)
+        let moved = frame != screen.frame || hypot(next.x - cursorState.position.x, next.y - cursorState.position.y) > 0.01
         if frame != screen.frame { setFrame(screen.frame, display: false) }
-        cursorState.move(to: Self.localPosition(point, frame: screen.frame), canvas: screen.frame.size)
+        cursorState.move(to: next, canvas: screen.frame.size)
+        return moved
     }
     static func localPosition(_ point: NSPoint, frame: NSRect) -> CGPoint {
         CGPoint(x: point.x - frame.minX, y: frame.maxY - point.y)

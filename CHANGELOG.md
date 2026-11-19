@@ -2,6 +2,7 @@
 
 ## 1.4
 
+- Recover system cursor hiding over Dock and menus even when the visibility flag is stale: coalesced mouse-event refresh, movement polling and a bounded heartbeat, with one balanced hide request.
 - Add a horror witch hand, Finn's silver sword with blue gem, and red and green lightsabers as a second four-character row.
 - Keep four digits, native rendering, cuff alignment, light/dark readability and the original first-row characters.
 - Add four distinct synthesized click sounds, style-specific impact colours, witch finger poses and independent sword/saber idle layers.

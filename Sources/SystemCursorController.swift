@@ -15,6 +15,7 @@ final class SystemCursorController {
     private var requestedHidden = false
     private(set) var ownsHide = false
     private var lastCheck = -Double.infinity
+    private var lastReassertion = -Double.infinity
 
     init(backend: CursorVisibilityBackend = WindowServerCursorBackend()) { self.backend = backend }
 
@@ -23,8 +24,8 @@ final class SystemCursorController {
         refresh(force: true)
     }
 
-    func refresh(force: Bool = false, at time: TimeInterval = ProcessInfo.processInfo.systemUptime) {
-        guard force || time - lastCheck >= 1.0 / 60.0 else { return }
+    func refresh(force: Bool = false, cursorMoved: Bool = false, at time: TimeInterval = ProcessInfo.processInfo.systemUptime) {
+        guard force || time - lastCheck >= 1.0 / 120.0 else { return }
         lastCheck = time
         guard requestedHidden else {
             if releaseHide() { _ = backend.setBackgroundControl(false) }
@@ -32,12 +33,16 @@ final class SystemCursorController {
         }
         if force || !ownsHide { _ = backend.setBackgroundControl(true) }
         let visible = backend.isVisible
-        guard !ownsHide || visible == true || (force && visible == nil) else { return }
+        // Dock/menu-bar ownership can restore the arrow while Quartz still
+        // reports "hidden". Movement and a bounded heartbeat repair that state
+        // independently of the visibility flag, including after the mouse stops.
+        let heartbeatDue = time - lastReassertion >= 0.2
+        guard !ownsHide || visible == true || force || cursorMoved || heartbeatDue else { return }
         // Never accumulate hide calls in the tracking loop. Release our previous
         // request before reasserting it; a failed release remains owned for retry.
         guard releaseHide() else { return }
         _ = backend.setBackgroundControl(true)
-        if backend.hide() { ownsHide = true }
+        if backend.hide() { ownsHide = true; lastReassertion = time }
     }
 
     @discardableResult private func releaseHide() -> Bool {

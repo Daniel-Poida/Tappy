@@ -34,6 +34,7 @@ A playful macOS pointer for presentations, demos and screen shares. Eight charac
 
 ## What's new in 1.4
 
+- Reassert cursor hiding after mouse events and periodically even when Quartz reports it hidden, covering Dock/menu-bar ownership resets. Every hide remains paired with a show.
 - Added a second row: a horror witch hand, Finn's silver sword with blue gem, and red and green lightsabers. Each has its own click sound, impact colour and idle animation. The original four stay in the first row.
 - The witch has claw-finger idle gestures; swords and lightsabers use independent toss layers. The settings window keeps its original size and has no scrolling.
 - Fixed duplicate pointers during settings changes. The live cursor uses one native surface with a full clear before every frame; size, character, arm and shadow update together. Only one overlay window and one application instance can own the cursor.

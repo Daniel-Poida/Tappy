@@ -253,7 +253,7 @@ import SwiftUI
         systemCursor.setHidden(true)
         expect(cursorBackend.backgroundEnabled && !cursorBackend.visible && cursorBackend.depth == 1, "Background cursor control hides the system pointer")
         for i in 0..<100 { systemCursor.refresh(at: ProcessInfo.processInfo.systemUptime + Double(i) / 100) }
-        expect(cursorBackend.hideCalls == 1 && cursorBackend.depth == 1, "Tracking does not accumulate hide requests")
+        expect(cursorBackend.hideCalls - cursorBackend.showCalls == 1 && cursorBackend.depth == 1, "Tracking keeps exactly one outstanding hide request")
         for _ in 0..<20 {
             cursorBackend.visible = true // Simulate WindowServer restoring it after an app/Space change.
             systemCursor.refresh(force: true)
@@ -278,6 +278,27 @@ import SwiftUI
         let cleanupBackend = FakeCursorBackend()
         do { let controller = SystemCursorController(backend: cleanupBackend); controller.setHidden(true) }
         expect(cleanupBackend.depth == 0 && cleanupBackend.visible, "Controller cleanup restores its cursor request")
+        let staleBackend = FakeCursorBackend()
+        let staleController = SystemCursorController(backend: staleBackend)
+        staleController.setHidden(true)
+        staleBackend.visibilityAvailable = true
+        staleBackend.reportHidden = true
+        var time = ProcessInfo.processInfo.systemUptime
+        for _ in 0..<120 {
+            staleBackend.visible = true // Dock restores a visible arrow, flag stays false.
+            time += 0.012
+            staleController.refresh(cursorMoved: true, at: time)
+            expect(!staleBackend.visible && staleBackend.depth == 1, "Dock hover repairs the cursor even when visibility reports hidden")
+        }
+        staleBackend.visible = true
+        time += 0.21
+        staleController.refresh(at: time)
+        expect(!staleBackend.visible && staleBackend.depth == 1, "Heartbeat repairs a delayed Dock cursor reset after movement stops")
+        staleBackend.visible = true
+        staleController.refresh(force: true, at: time)
+        expect(!staleBackend.visible && staleBackend.depth == 1, "Forced context refresh ignores a stale hidden flag")
+        staleController.setHidden(false)
+        expect(staleBackend.visible && staleBackend.depth == 0, "Dock recovery restores the normal cursor completely on disable")
         let unknownBackend = FakeCursorBackend()
         unknownBackend.visibilityAvailable = false
         let unknownController = SystemCursorController(backend: unknownBackend)
@@ -294,13 +315,14 @@ import SwiftUI
 private final class FakeCursorBackend: CursorVisibilityBackend {
     var visible = true
     var visibilityAvailable = true
+    var reportHidden = false
     var backgroundEnabled = false
     var depth = 0
     var hideCalls = 0
     var showCalls = 0
     var hideSucceeds = true
     var showSucceeds = true
-    var isVisible: Bool? { visibilityAvailable ? visible : nil }
+    var isVisible: Bool? { visibilityAvailable ? (reportHidden ? false : visible) : nil }
     func setBackgroundControl(_ enabled: Bool) -> Bool { backgroundEnabled = enabled; return true }
     func hide() -> Bool {
         guard hideSucceeds else { return false }
