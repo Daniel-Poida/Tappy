@@ -31,3 +31,31 @@ image restore ownership, helper acknowledgement, reuse and cleanup, and pipe EOF
 when the parent exits without running destructors. The Dock behaviour and normal
 system cursor restoration were confirmed manually by the user on November 19,
 2026. Headless tests do not establish visual behaviour over Dock.
+
+
+## Capture cursor image (1.4.3 preview)
+
+WebRTC's [macOS cursor monitor](https://webrtc.googlesource.com/src/+/refs/heads/main/modules/desktop_capture/mouse_cursor_monitor_mac.mm)
+reads `NSCursor.currentSystemCursor.image` and composites that image separately;
+its image capture path does not consult the Quartz visibility flag. A missing
+image leaves the previous shape cached. The installed Telemost binaries include
+this monitor, which makes this a likely explanation for the receiver-only arrow.
+
+Tappy now publishes a real 16×16 RGBA cursor whose pixels all have zero alpha,
+using the existing background cursor connection. Mouse/context changes reapply
+that cursor; a five-Hz stationary heartbeat repairs delayed cursor changes.
+The original current cursor is saved before arrow registration and restored
+after the guarded arrow image on disable and normal quit. The Dock guard and
+balanced Quartz ownership are retained. No capture or Accessibility permission
+is requested, and no recording or conference is started by Tappy.
+
+Tests cover RGBA validity, all transparent pixels, movement and heartbeat
+refresh, hide balancing and restoration. These checks do not establish what
+Telemost viewers see; that verification remains pending.
+
+On November 19, the local read-only cursor-image probe reported 56×80 pixels
+with 873 nontransparent pixels under 1.4.2, despite a hidden Quartz visibility
+flag. With 1.4.3 enabled, the same API returned 16×16 pixels with zero
+nontransparent pixels. `swift Tools/InspectCaptureCursor.swift` reproduces the
+image check without recording the screen or changing the cursor. Receiver-side
+Telemost verification is still required.

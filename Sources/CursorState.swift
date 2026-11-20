@@ -56,7 +56,7 @@ final class CursorState: ObservableObject {
     private var burstWork: DispatchWorkItem?
 
     func move(to point: CGPoint, canvas: CGSize? = nil) {
-        if hypot(point.x - position.x, point.y - position.y) > 0.1 { noteActivity() }
+        if point != position { noteActivity() }
         position = point
         if let canvas { trackOrientation(at: point, canvas: canvas) }
     }

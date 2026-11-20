@@ -5,6 +5,7 @@ protocol CursorVisibilityBackend: AnyObject {
     var isVisible: Bool? { get }
     func setBackgroundControl(_ enabled: Bool) -> Bool
     func setArrowTransparent(_ transparent: Bool) -> Bool
+    func setCaptureCursorTransparent(_ transparent: Bool)
     func hide() -> Bool
     func show() -> Bool
 }
@@ -17,6 +18,7 @@ final class SystemCursorController {
     private(set) var ownsHide = false
     private var lastCheck = -Double.infinity
     private var lastReassertion = -Double.infinity
+    private var lastCapturePublish = -Double.infinity
     private var protectsArrowImage = false
 
     init(backend: CursorVisibilityBackend = WindowServerCursorBackend()) { self.backend = backend }
@@ -32,6 +34,7 @@ final class SystemCursorController {
         guard requestedHidden else {
             if releaseHide() {
                 _ = backend.setArrowTransparent(false)
+                backend.setCaptureCursorTransparent(false)
                 protectsArrowImage = false
                 _ = backend.setBackgroundControl(false)
             }
@@ -46,6 +49,13 @@ final class SystemCursorController {
         // transparent system image covers that path; retain the balanced hide
         // fallback when image registration is unavailable.
         let heartbeatDue = time - lastReassertion >= 0.2
+        // WebRTC captures the cursor image separately from the framebuffer and
+        // does not consult the Quartz hide count. Publish a real transparent
+        // current cursor, including after another app changes its cursor shape.
+        if force || cursorMoved || time - lastCapturePublish >= 0.2 {
+            backend.setCaptureCursorTransparent(true)
+            lastCapturePublish = time
+        }
         let needsFallback = !protectsArrowImage && (force || cursorMoved || heartbeatDue)
         guard !ownsHide || visible == true || needsFallback else { return }
         // Never accumulate hide calls in the tracking loop. Release our previous
@@ -64,8 +74,24 @@ final class SystemCursorController {
     deinit {
         if releaseHide() {
             _ = backend.setArrowTransparent(false)
+            backend.setCaptureCursorTransparent(false)
             _ = backend.setBackgroundControl(false)
         }
+    }
+}
+
+/// A nonempty RGBA image lets capture clients replace their cached arrow with
+/// transparent pixels. An absent image would leave the previous shape cached.
+enum CaptureCursorImage {
+    static func make() -> NSCursor? {
+        guard let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 16, pixelsHigh: 16,
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 64, bitsPerPixel: 32),
+              let bytes = bitmap.bitmapData else { return nil }
+        memset(bytes, 0, bitmap.bytesPerRow * bitmap.pixelsHigh)
+        let image = NSImage(size: NSSize(width: 16, height: 16))
+        image.addRepresentation(bitmap)
+        return NSCursor(image: image, hotSpot: .zero)
     }
 }
 
@@ -83,6 +109,9 @@ final class WindowServerCursorBackend: CursorVisibilityBackend {
     private let setProperty: SetProperty?
     private let cursorVisible: CursorVisible?
     private let arrowGuard = SystemArrowGuard()
+    private let captureCursor = CaptureCursorImage.make()
+    private var originalCursor: NSCursor?
+    private var publishesCaptureCursor = false
 
     init() {
         let library = dlopen("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics", RTLD_LAZY | RTLD_LOCAL)
@@ -108,9 +137,25 @@ final class WindowServerCursorBackend: CursorVisibilityBackend {
     func hide() -> Bool { CGDisplayHideCursor(CGMainDisplayID()) == .success }
     func show() -> Bool { CGDisplayShowCursor(CGMainDisplayID()) == .success }
     func setArrowTransparent(_ transparent: Bool) -> Bool {
-        if transparent { return arrowGuard.start() }
+        if transparent {
+            // Save before the global arrow image is replaced, once per lease.
+            if originalCursor == nil { originalCursor = NSCursor.currentSystem ?? .arrow }
+            return arrowGuard.start()
+        }
         arrowGuard.stop()
         return true
+    }
+    func setCaptureCursorTransparent(_ transparent: Bool) {
+        if transparent {
+            guard let captureCursor else { return }
+            if originalCursor == nil { originalCursor = NSCursor.currentSystem ?? .arrow }
+            captureCursor.set()
+            publishesCaptureCursor = true
+        } else {
+            if publishesCaptureCursor { (originalCursor ?? .arrow).set() }
+            originalCursor = nil
+            publishesCaptureCursor = false
+        }
     }
     deinit { if let handle { dlclose(handle) } }
 }

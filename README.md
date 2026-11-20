@@ -1,6 +1,8 @@
-# Tappy 1.4.2
+# Tappy 1.4.3 preview
 
-[Download Tappy 1.4.2 for macOS](https://github.com/Daniel-Poida/Tappy/releases/download/v1.4.2/Tappy-1.4.2.dmg) · [Release notes](https://github.com/Daniel-Poida/Tappy/releases/tag/v1.4.2)
+[Download 1.4.3 preview](https://github.com/Daniel-Poida/Tappy/releases/download/v1.4.3/Tappy-1.4.3.dmg) · [Preview release notes](https://github.com/Daniel-Poida/Tappy/releases/tag/v1.4.3) · [Download stable 1.4.2](https://github.com/Daniel-Poida/Tappy/releases/download/v1.4.2/Tappy-1.4.2.dmg)
+
+1.4.3 updates pointer position directly from mouse events, independently of animation timing. It also includes a screen-sharing cursor fix: the local cursor-image check passes, while receiver-side verification in Telemost is pending.
 
 A playful macOS pointer for presentations, demos and screen shares. Eight characters arranged in two rows, each with exactly four fingers and its own sound and a readable dark contour with a narrow white keyline.
 
@@ -19,9 +21,9 @@ A playful macOS pointer for presentations, demos and screen shares. Eight charac
 
 | Light appearance | Dark appearance |
 | --- | --- |
-| ![Tappy 1.4.2 settings in light appearance](Assets/Tappy-1.4.2-settings-light.png) | ![Tappy 1.4.2 settings in dark appearance](Assets/Tappy-1.4.2-settings-dark.png) |
+| ![Tappy 1.4.3 settings in light appearance](Assets/Tappy-1.4.3-settings-light.png) | ![Tappy 1.4.3 settings in dark appearance](Assets/Tappy-1.4.3-settings-dark.png) |
 
-![The eight Tappy characters on light and dark backgrounds](Assets/Tappy-1.4.2-preview.png)
+![The eight Tappy characters on light and dark backgrounds](Assets/Tappy-1.4.3-preview.png)
 
 <details>
 <summary>Idle animation frames: finger play and quick wand tosses</summary>
@@ -31,6 +33,11 @@ A playful macOS pointer for presentations, demos and screen shares. Eight charac
 ![Wrist continuity during click compression and spring rebound](Assets/Tappy-1.4.2-tap-preview.png)
 
 </details>
+
+## What's new in 1.4.3 preview
+
+- Pointer position follows native mouse and drag events without waiting for the 90-Hz animation clock. Animation and angle smoothing keep their own timing. [Implementation and validation](docs/pointer-motion.md).
+- Publish a valid transparent current cursor image for clients that capture the cursor separately. Local macOS checks return zero nontransparent pixels; Telemost viewer confirmation is pending. [Cursor ownership and capture checks](docs/cursor-hiding.md).
 
 ## What's new in 1.4.2
 

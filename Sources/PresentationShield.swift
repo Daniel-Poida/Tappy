@@ -16,6 +16,7 @@ final class PresentationShieldWindow: NSPanel {
         hidesOnDeactivate = false
         isReleasedWhenClosed = false
         ignoresMouseEvents = false
+        acceptsMouseMovedEvents = true
         collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
         contentView = PresentationShieldView(frame: NSRect(origin: .zero, size: screen.frame.size), onRelease: onRelease, onTap: onTap)
     }
@@ -26,6 +27,10 @@ final class PresentationShieldView: NSView {
     let onRelease: (PointerButton) -> Void
     init(frame: NSRect, onRelease: @escaping (PointerButton) -> Void = { _ in }, onTap: @escaping (PointerButton) -> Void) {
         self.onTap = onTap; self.onRelease = onRelease; super.init(frame: frame)
+        // Non-activating presentation panels also deliver hover movement to
+        // the app's local monitor while another application keeps keyboard focus.
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseMoved, .activeAlways, .inVisibleRect],
+                                      owner: self, userInfo: nil))
     }
     required init?(coder: NSCoder) { nil }
     override var acceptsFirstResponder: Bool { false }
@@ -43,6 +48,7 @@ final class PresentationShieldView: NSView {
     override func rightMouseUp(with event: NSEvent) { onRelease(.secondary) }
     override func otherMouseUp(with event: NSEvent) { onRelease(.other) }
     override func mouseDragged(with event: NSEvent) {}
+    override func mouseMoved(with event: NSEvent) {}
     override func rightMouseDragged(with event: NSEvent) {}
     override func otherMouseDragged(with event: NSEvent) {}
     override func scrollWheel(with event: NSEvent) {}

@@ -169,6 +169,38 @@ import SwiftUI
         }
         CursorOverlayFrame.draw(nil, in: reused, canvas: CGSize(width: 460, height: 520))
         expect(pixels(reused).allSatisfy { $0 == 0 }, "Disabling clears every previous pointer pixel")
+        // Deliver movement between animation ticks: the rendered frame must
+        // follow the newest subpixel position without advancing the artwork.
+        var movingFrame = CursorOverlayFrame(figure: PointerFigure(position: CGPoint(x: 150, y: 30),
+            style: .starWand, size: 1.2, impact: 0.7, shadow: true, lean: 17,
+            lowerOpacity: 0.4, extensionFraction: 1, phase: 0.65), burstOpacity: 0.8)
+        for position in [CGPoint(x: 160.125, y: 20.75), CGPoint(x: 300.5, y: 40.25),
+                         CGPoint(x: 80.25, y: 125.5), CGPoint(x: 260.75, y: 15.125)] {
+            movingFrame.move(to: position, idleTime: nil)
+            expect(movingFrame.figure.position == position && movingFrame.figure.availableTopRoom == position.y,
+                   "Mouse delivery updates exact position and top clearance without an animation tick")
+            expect(movingFrame.figure.phase == 0.65 && movingFrame.figure.lean == 17 && movingFrame.burstOpacity == 0.8,
+                   "Mouse delivery leaves the current animation phase and angle unchanged")
+            CursorOverlayFrame.draw(movingFrame, in: reused, canvas: CGSize(width: 460, height: 520))
+            let expected = CursorOverlayFrame(figure: PointerFigure(position: position, style: .starWand,
+                size: 1.2, impact: 0.7, shadow: true, lean: 17, lowerOpacity: 0.4, extensionFraction: 1,
+                availableTopRoom: position.y, phase: 0.65), burstOpacity: 0.8)
+            let fresh = frameContext()
+            CursorOverlayFrame.draw(expected, in: fresh, canvas: CGSize(width: 460, height: 520))
+            expect(pixels(reused) == pixels(fresh), "Movement draws one joined pointer at the latest position, without retaining its previous pixels")
+        }
+        movingFrame.figure.idleTime = 0.5
+        movingFrame.move(to: CGPoint(x: 200, y: 30), idleTime: nil)
+        expect(movingFrame.figure.idleTime == nil, "Movement cancels the displayed idle pose immediately")
+        let fineMotionState = CursorState()
+        fineMotionState.previewIdle()
+        fineMotionState.move(to: CGPoint(x: 0.02, y: 0.02))
+        expect(fineMotionState.idleTime == nil, "Fine high-rate mouse increments cancel idle without waiting for a larger polled delta")
+        for sample in 0..<1000 {
+            movingFrame.move(to: CGPoint(x: Double(sample) / 4, y: 20.5), idleTime: nil)
+        }
+        expect(movingFrame.figure.position == CGPoint(x: 249.75, y: 20.5) && movingFrame.figure.phase == 0.65,
+               "High-rate movement retains only the latest position, independently of animation timing")
         var motion = CursorTapMotion()
         expect(motion.phase(at: 0) == 0 && motion.burstOpacity(at: 0) == 0, "Native cursor starts at rest")
         motion.record(at: 1)
@@ -216,6 +248,8 @@ import SwiftUI
             onRelease: { shieldReleases.append($0) }) { button in shieldTaps += 1; shieldButtons.append(button) }
         expect(shield.hitTest(CGPoint(x: 20, y: 20)) === shield && shield.hitTest(CGPoint(x: 200, y: 200)) == nil, "Presentation shield captures its screen area")
         expect(shield.acceptsFirstMouse(for: nil) && !shield.acceptsFirstResponder, "Presentation accepts clicks without taking keyboard focus")
+        expect(shield.trackingAreas.contains { $0.options.contains([.mouseMoved, .activeAlways, .inVisibleRect]) },
+               "The non-activating presentation surface receives hover movement for event-driven following")
         for type: NSEvent.EventType in [.leftMouseDown, .rightMouseDown, .otherMouseDown] {
             let event = NSEvent.mouseEvent(with: type, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
             switch type { case .leftMouseDown: shield.mouseDown(with: event); case .rightMouseDown: shield.rightMouseDown(with: event); default: shield.otherMouseDown(with: event) }
@@ -393,6 +427,19 @@ import SwiftUI
         systemCursor.setHidden(true)
         expect(cursorBackend.backgroundEnabled && !cursorBackend.visible && cursorBackend.depth == 1, "Background cursor control hides the system pointer")
         expect(cursorBackend.arrowTransparent, "System arrow image is protected before hiding the cursor")
+        expect(cursorBackend.captureCursorTransparent, "Capture receives a transparent current image even with the Quartz cursor hidden")
+        cursorBackend.captureCursorTransparent = false // Another app publishes a normal cursor image.
+        systemCursor.refresh(cursorMoved: true, at: ProcessInfo.processInfo.systemUptime + 1)
+        expect(cursorBackend.captureCursorTransparent && cursorBackend.depth == 1,
+               "Mouse movement repairs the capture image without accumulating hide calls")
+        let captureRefreshStart = ProcessInfo.processInfo.systemUptime + 3
+        let previousCapturePublishes = cursorBackend.capturePublishes
+        for frame in 0..<120 { systemCursor.refresh(at: captureRefreshStart + Double(frame) / 120) }
+        expect((4...6).contains(cursorBackend.capturePublishes - previousCapturePublishes),
+               "A stationary capture cursor is refreshed at most five times per second")
+        cursorBackend.captureCursorTransparent = false
+        systemCursor.refresh(at: captureRefreshStart + 1.3)
+        expect(cursorBackend.captureCursorTransparent, "Heartbeat repairs a changed cursor image when the mouse is stationary")
         cursorBackend.reportHidden = true
         let initialShows = cursorBackend.showCalls
         for i in 0..<120 {
@@ -412,6 +459,7 @@ import SwiftUI
         systemCursor.setHidden(false)
         expect(cursorBackend.visible && cursorBackend.depth == 0 && !cursorBackend.backgroundEnabled, "Disabling Tappy fully restores the system pointer")
         expect(!cursorBackend.arrowTransparent, "Disabling Tappy restores the original arrow image")
+        expect(!cursorBackend.captureCursorTransparent, "Disabling Tappy restores the current cursor image for capture")
         systemCursor.setHidden(false)
         expect(cursorBackend.showCalls == cursorBackend.hideCalls, "Repeated disable does not over-show the system cursor")
         cursorBackend.hideSucceeds = false
@@ -423,6 +471,7 @@ import SwiftUI
         cursorBackend.showSucceeds = false
         systemCursor.setHidden(false)
         expect(systemCursor.ownsHide && cursorBackend.backgroundEnabled, "A failed restore remains owned for recovery")
+        expect(cursorBackend.captureCursorTransparent, "An unsuccessful hide release retains capture protection until recovery")
         cursorBackend.showSucceeds = true
         systemCursor.refresh(force: true)
         expect(!systemCursor.ownsHide && cursorBackend.depth == 0 && cursorBackend.visible, "Pending restore recovers after a context change")
@@ -430,6 +479,16 @@ import SwiftUI
         do { let controller = SystemCursorController(backend: cleanupBackend); controller.setHidden(true) }
         expect(cleanupBackend.depth == 0 && cleanupBackend.visible, "Controller cleanup restores its cursor request")
         expect(!cleanupBackend.arrowTransparent, "Controller cleanup restores the original arrow image")
+        expect(!cleanupBackend.captureCursorTransparent, "Controller cleanup restores the current capture image")
+        let transparentCaptureCursor = CaptureCursorImage.make()!
+        let captureBitmap = NSBitmapImageRep(cgImage: transparentCaptureCursor.image.cgImage(forProposedRect: nil, context: nil, hints: nil)!)
+        expect(captureBitmap.pixelsWide == 16 && captureBitmap.pixelsHigh == 16 && transparentCaptureCursor.hotSpot == .zero,
+               "Capture receives a valid nonempty cursor image and hotspot")
+        for y in 0..<captureBitmap.pixelsHigh {
+            for x in 0..<captureBitmap.pixelsWide {
+                expect(captureBitmap.colorAt(x: x, y: y)!.alphaComponent == 0, "Every capture cursor pixel is transparent")
+            }
+        }
         let staleBackend = FakeCursorBackend()
         staleBackend.arrowControlAvailable = false
         let staleController = SystemCursorController(backend: staleBackend)
@@ -506,6 +565,8 @@ private final class FakeCursorBackend: CursorVisibilityBackend {
     var backgroundEnabled = false
     var arrowTransparent = false
     var arrowControlAvailable = true
+    var captureCursorTransparent = false
+    var capturePublishes = 0
     var depth = 0
     var hideCalls = 0
     var showCalls = 0
@@ -519,6 +580,10 @@ private final class FakeCursorBackend: CursorVisibilityBackend {
         return true
     }
     func dockForceShow() { visible = true }
+    func setCaptureCursorTransparent(_ transparent: Bool) {
+        captureCursorTransparent = transparent
+        if transparent { capturePublishes += 1 }
+    }
     func hide() -> Bool {
         guard hideSucceeds else { return false }
         hideCalls += 1; depth += 1; visible = false; return true

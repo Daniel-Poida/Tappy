@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.3 (prerelease)
+
+- Update pointer position directly from native mouse and drag events, independently of the 90-Hz animation clock. Coalesce redraws through AppKit and retain a separate 30-Hz fallback for missed events and programmatic warps.
+- Keep angle smoothing and animation timing independent of mouse polling rate; enable hover delivery in non-activating Presentation Mode panels.
+- Publish a valid transparent current cursor image while Tappy is active, for capture clients that composite the cursor separately from the screen.
+- Refresh that image after mouse and application transitions, with a bounded stationary heartbeat. Restore the previous current cursor on disable and normal quit.
+- Retain the existing Dock arrow guard and balanced cursor hide/show ownership. Receiver-side verification in Telemost is pending.
+
 ## 1.4.2
 
 - Redraw the Classic and Witch idle hands with consistent dorsal anatomy; add three-finger and middle-finger poses.

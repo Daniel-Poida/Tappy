@@ -8,6 +8,7 @@ final class CursorOverlayWindow: NSWindow, ObservableObject {
     @Published private(set) var isActive = false
     @Published private(set) var presentationMode = false
     private var trackingTimer: Timer?
+    private var positionRecoveryTimer: Timer?
     private var clickMonitor: Any?
     private var localMonitor: Any?
     private var cursorRefreshPending = false
@@ -60,6 +61,7 @@ final class CursorOverlayWindow: NSWindow, ObservableObject {
         surface.reset()
         orderOut(nil)
         trackingTimer?.invalidate(); trackingTimer = nil
+        positionRecoveryTimer?.invalidate(); positionRecoveryTimer = nil
         if let clickMonitor { NSEvent.removeMonitor(clickMonitor) }; clickMonitor = nil
         if let localMonitor { NSEvent.removeMonitor(localMonitor) }; localMonitor = nil
         systemCursor.setHidden(false)
@@ -119,17 +121,29 @@ final class CursorOverlayWindow: NSWindow, ObservableObject {
         surface.update(state: cursorState, settings: .shared)
     }
     private func startTracking() {
+        // Position is delivered by mouse events. This clock only advances the
+        // artwork, angle and cursor ownership; it never gates pointer movement.
         let timer = Timer(timeInterval: 1.0 / 90, repeats: true) { [weak self] _ in
-            let moved = self?.updateCursorPosition() ?? false
-            self?.systemCursor.refresh(cursorMoved: moved)
-            self?.cursorState.tick(systemIdle: InputIdleTime.seconds,
+            guard let self, self.isActive else { return }
+            self.systemCursor.refresh()
+            self.cursorState.trackOrientation(at: self.cursorState.position, canvas: self.frame.size)
+            self.cursorState.tick(systemIdle: InputIdleTime.seconds,
                                     reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
                                     secondaryDown: CGEventSource.buttonState(.combinedSessionState, button: .right))
-            if let self { self.surface.update(state: self.cursorState, settings: .shared) }
+            self.surface.update(state: self.cursorState, settings: .shared)
         }
         timer.tolerance = 0.002
         RunLoop.main.add(timer, forMode: .common)
         trackingTimer = timer
+        // Recover programmatic warps and missing events independently of the
+        // animation clock. Normal movement does not wait for this fallback.
+        let recovery = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in
+            guard let self, self.isActive else { return }
+            if self.updateCursorPosition() { self.systemCursor.refresh(cursorMoved: true) }
+        }
+        recovery.tolerance = 0.002
+        RunLoop.main.add(recovery, forMode: .common)
+        positionRecoveryTimer = recovery
         // Mouse-only monitoring does not request keyboard/Accessibility access.
         let buttons: Set<NSEvent.EventType> = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
         let releases: Set<NSEvent.EventType> = [.leftMouseUp, .rightMouseUp, .otherMouseUp]
@@ -137,7 +151,8 @@ final class CursorOverlayWindow: NSWindow, ObservableObject {
             .leftMouseUp, .rightMouseUp, .otherMouseUp,
             .mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged, .scrollWheel]
         clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: events) { [weak self] event in
-            guard let self else { return }
+            guard let self, self.isActive else { return }
+            self.updateCursorPosition()
             self.reassertCursorAfterMouseEvent()
             if !self.presentationMode {
                 if buttons.contains(event.type) { self.tap(button: PointerButton(event: event)) }
@@ -145,7 +160,8 @@ final class CursorOverlayWindow: NSWindow, ObservableObject {
             }
         }
         localMonitor = NSEvent.addLocalMonitorForEvents(matching: events) { [weak self] event in
-            guard let self else { return event }
+            guard let self, self.isActive else { return event }
+            self.updateCursorPosition()
             self.reassertCursorAfterMouseEvent()
             if !self.presentationMode {
                 if buttons.contains(event.type) { self.tap(button: PointerButton(event: event)) }
@@ -172,9 +188,13 @@ final class CursorOverlayWindow: NSWindow, ObservableObject {
         guard let screen = NSScreen.screens.first(where: { NSMouseInRect(point, $0.frame, false) }) ?? NSScreen.main else { return false }
         let next = Self.localPosition(point, frame: screen.frame)
         let moved = frame != screen.frame || hypot(next.x - cursorState.position.x, next.y - cursorState.position.y) > 0.01
+        guard moved else { return false }
         if frame != screen.frame { setFrame(screen.frame, display: false) }
-        cursorState.move(to: next, canvas: screen.frame.size)
-        return moved
+        // Read the latest system position rather than replaying queued event
+        // coordinates. Keep angle interpolation on its own stable clock.
+        cursorState.move(to: next)
+        surface.move(to: next, idleTime: cursorState.idleTime)
+        return true
     }
     static func localPosition(_ point: NSPoint, frame: NSRect) -> CGPoint {
         CGPoint(x: point.x - frame.minX, y: frame.maxY - point.y)

@@ -33,6 +33,13 @@ final class CursorOverlayView: NSView {
         needsDisplay = true
     }
     func reset() { motion.reset(); lastBurst = nil; currentFrame = nil; needsDisplay = true }
+    func move(to position: CGPoint, idleTime: Double?) {
+        guard currentFrame != nil else { return }
+        currentFrame?.move(to: position, idleTime: idleTime)
+        // Let AppKit coalesce redraws in the event loop. A high-polling mouse
+        // must not force a full synchronous bitmap draw for every input event.
+        needsDisplay = true
+    }
     override func draw(_ dirtyRect: NSRect) {
         guard let context = NSGraphicsContext.current?.cgContext else { return }
         CursorOverlayFrame.draw(currentFrame, in: context, canvas: bounds.size)
@@ -42,6 +49,11 @@ final class CursorOverlayView: NSView {
 struct CursorOverlayFrame {
     var figure: PointerFigure
     var burstOpacity: Double = 0
+    mutating func move(to position: CGPoint, idleTime: Double?) {
+        figure.position = position
+        figure.availableTopRoom = position.y
+        figure.idleTime = idleTime
+    }
     static func draw(_ frame: Self?, in context: CGContext, canvas: CGSize) {
         context.saveGState()
         // Clear the old cursor, including its shadow and arm, before drawing.
